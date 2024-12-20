@@ -1,0 +1,3810 @@
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\module-info.java
+```
+module com.example {
+    requires javafx.controls;
+    requires javafx.fxml;
+    requires javafx.graphics;
+    requires javafx.base;
+    requires java.sql;
+
+    // If the MySQL driver is on the module path and recognized as an automatic module, you can require it:
+    // requires mysql.connector.java;
+
+    // Export your packages so other modules (like JavaFX runtime) can access them if needed
+    exports database_access;
+    exports models;
+    exports ui;
+    exports utils;
+
+    // Open the packages that contain classes loaded via FXML if you're using FXML
+    // Typically, you open the package with your controllers to javafx.fxml
+    // If your FXML controllers are in ui package:
+    opens ui to javafx.fxml;
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\utils\DatabaseConnection.java
+```
+package utils;
+
+import models.User;
+
+import java.sql.*;
+
+public class DatabaseConnection {
+    private static final String URL = "jdbc:mysql://localhost:3306/db9"; // Update with your database URL
+    private static final String USER = "root"; // Replace with your username
+    private static final String PASSWORD = ""; // Replace with your password
+
+    public static Connection getConnection() {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            System.out.println("MySQL JDBC Driver Registered!");
+            return DriverManager.getConnection(URL, USER, PASSWORD);
+        } catch (ClassNotFoundException e) {
+            System.err.println("MySQL Driver not found: " + e.getMessage());
+        } catch (SQLException e) {
+            System.err.println("Connection failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public static User getUserByUsernameAndPassword(String username, String password) {
+        String query = "SELECT * FROM user_account WHERE username = ? AND password = ?";
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+
+            if (connection == null) {
+                throw new SQLException("Failed to establish a database connection.");
+            }
+
+            preparedStatement.setString(1, username);
+            preparedStatement.setString(2, password);
+
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            if (resultSet.next()) {
+                User user = new User(username, password);
+                return user;
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching user by username and password: " + e.getMessage());
+        }
+        return null;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\SessionManager.java
+```
+package ui;
+
+public class SessionManager {
+    private static boolean loggedIn = false;
+
+    public static boolean isLoggedIn() {
+        return loggedIn;
+    }
+
+    public static void login() {
+        loggedIn = true;
+    }
+
+    public static void logout() {
+        loggedIn = false;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\ServiceManagement.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import models.Service;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ServiceManagement {
+
+    public static void refreshServiceTable(TableView<Service> serviceTable) {
+        serviceTable.getItems().clear();
+        String query = "SELECT * FROM services"; 
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            ObservableList<Service> services = FXCollections.observableArrayList();
+            while (rs.next()) {
+                Service service = new Service(
+                        rs.getInt("ServiceID"),
+                        rs.getInt("CarID"),
+                        rs.getInt("CustomerID"),
+                        rs.getString("ServiceDate"),
+                        rs.getString("ServiceDescription"),
+                        rs.getDouble("Cost")
+                );
+                services.add(service);
+            }
+            serviceTable.setItems(services);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void applyFilters(TableView<Service> serviceTable, ObservableList<Service> serviceList, TextField... filters) {
+        for (TextField filter : filters) {
+            filter.textProperty().addListener((observable, oldValue, newValue) ->
+                    filterServices(serviceTable, serviceList, filters));
+        }
+    }
+
+    public static void filterServices(TableView<Service> serviceTable, ObservableList<Service> serviceList, TextField[] filters) {
+        String serviceIdFilter = filters[0].getText();
+        String carIdFilter = filters[1].getText();
+        String customerIdFilter = filters[2].getText();
+        String serviceDateFilter = filters[3].getText();
+        String descriptionFilter = filters[4].getText();
+        String costFilter = filters[5].getText();
+
+        List<Service> filteredServices = new ArrayList<>();
+        for (Service service : serviceList) {
+            if (matchesFilters(service, serviceIdFilter, carIdFilter, customerIdFilter, serviceDateFilter, descriptionFilter, costFilter)) {
+                filteredServices.add(service);
+            }
+        }
+
+        serviceTable.setItems(FXCollections.observableArrayList(filteredServices));
+    }
+
+    private static boolean matchesFilters(Service service, String serviceId, String carId, String customerId, String serviceDate, String description, String cost) {
+        return (serviceId.isEmpty() || Integer.toString(service.getServiceID()).contains(serviceId)) &&
+                (carId.isEmpty() || Integer.toString(service.getCarID()).contains(carId)) &&
+                (customerId.isEmpty() || Integer.toString(service.getCustomerID()).contains(customerId)) &&
+                (serviceDate.isEmpty() || service.getServiceDate().contains(serviceDate)) &&
+                (description.isEmpty() || service.getServiceDescription().contains(description)) &&
+                (cost.isEmpty() || Double.toString(service.getCost()).contains(cost));
+    }
+
+    public void updateService(int serviceID, int carID, int customerID, String serviceDate, String serviceDescription, double cost) {
+        String updateQuery = "UPDATE services SET CarID = ?, CustomerID = ?, ServiceDate = ?, ServiceDescription = ?, Cost = ? WHERE ServiceID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(updateQuery)) {
+
+            pstmt.setInt(1, carID);
+            pstmt.setInt(2, customerID);
+            pstmt.setString(3, serviceDate);
+            pstmt.setString(4, serviceDescription);
+            pstmt.setDouble(5, cost);
+            pstmt.setInt(6, serviceID);
+
+            pstmt.executeUpdate();
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void deleteService(int serviceID) {
+        String deleteQuery = "DELETE FROM services WHERE ServiceID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(deleteQuery)) {
+
+            pstmt.setInt(1, serviceID);
+            pstmt.executeUpdate();
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void clearTextFields(TextField... fields) {
+        for (TextField field : fields) {
+            field.clear();
+        }
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\SearchResultPage.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Pos;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.stage.Stage;
+import javafx.application.Application;
+import javafx.beans.property.*;
+
+import utils.DatabaseConnection;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+public class SearchResultPage {
+    private String query;
+
+    // Constructor to receive the search query
+    public SearchResultPage(String query) {
+        this.query = query;
+    }
+
+    public void showNewWindow() {
+        Stage stage = new Stage();
+        stage.setTitle("Search Results");
+
+        // Back Button
+        Button backButton = new Button("Back");
+        backButton.setStyle("-fx-font-size: 14px; -fx-padding: 5; -fx-border-radius: 10; -fx-background-radius: 10; -fx-border-color: white; -fx-background-color: rgba(0, 0, 0, 0.8); -fx-text-fill: white; ");
+        backButton.setOnAction(e -> {
+            homepage homePage = new homepage();
+            homePage.start(new Stage());
+            stage.close();
+        });
+
+        // Header Label
+        Label headerLabel = new Label("Search Results");
+        headerLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: white;");
+
+        // Search Bar
+        TextField searchBar = new TextField();
+        searchBar.setPromptText("Enter your search query...");
+        searchBar.setStyle(
+                "-fx-font-size: 15px; " +
+                        "-fx-padding: 5; " +
+                        "-fx-border-radius: 20; " +
+                        "-fx-background-radius: 20; " +
+                        "-fx-border-color: white; " +
+                        "-fx-background-color: rgba(0, 0, 0, 0.8); " +
+                        "-fx-text-fill: white; " +
+                        "-fx-prompt-text-fill: gray; "
+        );
+        searchBar.setMaxWidth(450);
+
+        // Search Button
+        Button searchButton = new Button("Search");
+        searchButton.setStyle(
+                "-fx-font-size: 12px; " +
+                        "-fx-padding: 4; " +
+                        "-fx-border-radius: 10; " +
+                        "-fx-background-radius: 10; " +
+                        "-fx-border-color: white; " +
+                        "-fx-background-color: rgba(0, 0, 0, 0.8); " +
+                        "-fx-text-fill: white; "
+        );
+        searchButton.setOnAction(e -> {
+            String newQuery = searchBar.getText().trim();
+            if (!newQuery.isEmpty()) {
+                // Close current window and open a new search result window
+                stage.close();
+                SearchResultPage resultPage = new SearchResultPage(newQuery);
+                resultPage.showNewWindow();
+            }
+        });
+
+        // Header Layout
+        HBox leftHeaderBox = new HBox(10);
+        leftHeaderBox.setAlignment(Pos.CENTER_LEFT);
+        leftHeaderBox.getChildren().addAll(backButton, headerLabel);
+
+        HBox rightHeaderBox = new HBox(10);
+        rightHeaderBox.setAlignment(Pos.CENTER_RIGHT);
+        rightHeaderBox.getChildren().addAll(searchBar, searchButton);
+
+        BorderPane header = new BorderPane();
+        header.setLeft(leftHeaderBox);
+        header.setRight(rightHeaderBox);
+        header.setPadding(new Insets(10));
+        header.setStyle(" -fx-background-color: rgba(0, 0, 0, 0.5); -fx-padding: 10;");
+
+        // TableView for Results
+        TableView<Car> table = new TableView<>();
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setStyle(" -fx-background-color: rgba(0, 0, 0, 0.8); -fx-text-fill: white;");
+
+        TableColumn<Car, Integer> carIdCol = new TableColumn<>("Car ID");
+        carIdCol.setCellValueFactory(cellData -> cellData.getValue().carIdProperty().asObject());
+
+        TableColumn<Car, String> makeCol = new TableColumn<>("Make");
+        makeCol.setCellValueFactory(cellData -> cellData.getValue().makeProperty());
+
+        TableColumn<Car, String> modelCol = new TableColumn<>("Model");
+        modelCol.setCellValueFactory(cellData -> cellData.getValue().modelProperty());
+
+        TableColumn<Car, Integer> yearCol = new TableColumn<>("Year");
+        yearCol.setCellValueFactory(cellData -> cellData.getValue().yearProperty().asObject());
+
+        TableColumn<Car, Double> priceCol = new TableColumn<>("Price");
+        priceCol.setCellValueFactory(cellData -> cellData.getValue().priceProperty().asObject());
+
+        table.getColumns().addAll(carIdCol, makeCol, modelCol, yearCol, priceCol);
+
+        table.setRowFactory(tv -> {
+            TableRow<Car> row = new TableRow<>();
+            row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1);  -fx-border-color: white; -fx-text-fill: white;");
+            return row;
+        });
+
+        ObservableList<Car> cars = searchDatabase(query);
+        table.setItems(cars);
+
+        VBox resultsArea = new VBox(20);
+        resultsArea.setAlignment(Pos.CENTER);
+        resultsArea.setPadding(new Insets(20));
+        resultsArea.getChildren().add(table);
+
+        if (cars.isEmpty()) {
+            Label noResultsLabel = new Label("No results found");
+            noResultsLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: white;");
+            resultsArea.getChildren().add(noResultsLabel);
+        }
+
+        BorderPane layout = new BorderPane();
+        layout.setTop(header);
+        layout.setCenter(resultsArea);
+
+        // Image backgroundImage = new Image(getClass().getResource("demo\\src\\main\\resources\\com\\example\\resources\\images\\serchbg.jpg").toExternalForm());
+        // BackgroundSize backgroundSize = new BackgroundSize(100, 100, true, true, false, true);
+        // BackgroundImage bgImage = new BackgroundImage(
+        //         backgroundImage,
+        //         BackgroundRepeat.NO_REPEAT,
+        //         BackgroundRepeat.NO_REPEAT,
+        //         BackgroundPosition.CENTER,
+        //         backgroundSize
+        // );
+        // layout.setBackground(new Background(bgImage));
+
+        Scene scene = new Scene(layout, 800, 600);
+        // scene.getStylesheets().add(getClass().getResource("demo\\src\\main\\resources\\com\\example\\resources\\style\\tableStyle.css").toExternalForm());
+
+        stage.setScene(scene);
+        stage.show();
+    }
+
+    private ObservableList<Car> searchDatabase(String query) {
+        ObservableList<Car> cars = FXCollections.observableArrayList();
+        if (query == null || query.trim().isEmpty()) {
+            return cars;
+        }
+
+        String sql = "SELECT * FROM cars WHERE Make LIKE ? OR Model LIKE ? OR Year LIKE ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            String searchTerm = "%" + query + "%";
+            pstmt.setString(1, searchTerm);
+            pstmt.setString(2, searchTerm);
+            pstmt.setString(3, searchTerm);
+
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                cars.add(new Car(rs.getInt("CarID"),
+                        rs.getString("Make"),
+                        rs.getString("Model"),
+                        rs.getInt("Year"),
+                        rs.getDouble("Price"),
+                        rs.getInt("Stock"),
+                        rs.getString("VIN")));
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return cars;
+    }
+
+    // Inner class Car for displaying search results
+    public static class Car {
+        private final IntegerProperty carId;
+        private final StringProperty make;
+        private final StringProperty model;
+        private final IntegerProperty year;
+        private final DoubleProperty price;
+
+        public Car(int carId, String make, String model, int year, double price, int stock, String vin) {
+            this.carId = new SimpleIntegerProperty(carId);
+            this.make = new SimpleStringProperty(make);
+            this.model = new SimpleStringProperty(model);
+            this.year = new SimpleIntegerProperty(year);
+            this.price = new SimpleDoubleProperty(price);
+        }
+
+        public IntegerProperty carIdProperty() {
+            return carId;
+        }
+
+        public StringProperty makeProperty() {
+            return make;
+        }
+
+        public StringProperty modelProperty() {
+            return model;
+        }
+
+        public IntegerProperty yearProperty() {
+            return year;
+        }
+
+        public DoubleProperty priceProperty() {
+            return price;
+        }
+    }
+
+    
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\PaymentManagement.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import models.Payment;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class PaymentManagement {
+
+    public static void refreshPayments(TableView<Payment> paymentTable) {
+        paymentTable.getItems().clear();
+        String query = "SELECT * FROM payments";
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            ObservableList<Payment> paymentList = FXCollections.observableArrayList();
+            while (rs.next()) {
+                paymentList.add(new Payment(
+                        rs.getInt("PaymentID"),
+                        rs.getInt("OrderID"),
+                        rs.getString("PaymentDate"),
+                        rs.getString("PaymentMethod"),
+                        rs.getDouble("Amount")
+                ));
+            }
+            paymentTable.setItems(paymentList);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void addPayment(int paymentID, int orderID, String paymentDate, String paymentMethod, double amount) {
+        String query = "INSERT INTO payments (PaymentID, OrderID, PaymentDate, PaymentMethod, Amount) VALUES (?, ?, ?, ?, ?)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, paymentID);
+            pstmt.setInt(2, orderID);
+            pstmt.setString(3, paymentDate);
+            pstmt.setString(4, paymentMethod);
+            pstmt.setDouble(5, amount);
+            pstmt.executeUpdate();
+            System.out.println("Payment added successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void updatePayment(int paymentID, int orderID, String paymentDate, String paymentMethod, double amount) {
+        String query = "UPDATE payments SET OrderID = ?, PaymentDate = ?, PaymentMethod = ?, Amount = ? WHERE PaymentID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, orderID);
+            pstmt.setString(2, paymentDate);
+            pstmt.setString(3, paymentMethod);
+            pstmt.setDouble(4, amount);
+            pstmt.setInt(5, paymentID);
+            pstmt.executeUpdate();
+            System.out.println("Payment updated successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void deletePayment(int paymentID) {
+        String query = "DELETE FROM payments WHERE PaymentID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, paymentID);
+            pstmt.executeUpdate();
+            System.out.println("Payment deleted successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void applyFilters(TableView<Payment> paymentTable, ObservableList<Payment> paymentList, TextField... filters) {
+        for (TextField filter : filters) {
+            filter.textProperty().addListener((observable, oldValue, newValue) ->
+                    filterPayments(paymentTable, paymentList, filters));
+        }
+    }
+
+    private static void filterPayments(TableView<Payment> paymentTable, ObservableList<Payment> paymentList, TextField[] filters) {
+        String paymentIDFilter = filters[0].getText();
+        String orderIDFilter = filters[1].getText();
+        String paymentDateFilter = filters[2].getText();
+        String paymentMethodFilter = filters[3].getText();
+        String amountFilter = filters[4].getText();
+
+        List<Payment> filteredPayments = new ArrayList<>();
+        for (Payment payment : paymentList) {
+            if (matchesFilters(payment, paymentIDFilter, orderIDFilter, paymentDateFilter, paymentMethodFilter, amountFilter)) {
+                filteredPayments.add(payment);
+            }
+        }
+
+        paymentTable.setItems(FXCollections.observableArrayList(filteredPayments));
+    }
+
+    private static boolean matchesFilters(Payment payment, String paymentID, String orderID, String paymentDate, String paymentMethod, String amount) {
+        return (paymentID.isEmpty() || Integer.toString(payment.getPaymentID()).contains(paymentID)) &&
+                (orderID.isEmpty() || Integer.toString(payment.getOrderID()).contains(orderID)) &&
+                (paymentDate.isEmpty() || payment.getPaymentDate().contains(paymentDate)) &&
+                (paymentMethod.isEmpty() || payment.getPaymentMethod().contains(paymentMethod)) &&
+                (amount.isEmpty() || Double.toString(payment.getAmount()).contains(amount));
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\OrderManagement.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import models.Order;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class OrderManagement {
+
+    public static void refreshOrder(TableView<Order> orderTable){
+        orderTable.getItems().clear();
+        String query="SELECT * FROM orders";
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            ObservableList<Order> orderList = FXCollections.observableArrayList();
+            while (rs.next()) {
+                orderList.add(new Order(
+                        rs.getInt("OrderID"),
+                        rs.getString("OrderDate"),
+                        rs.getInt("CarID"),
+                        rs.getInt("CustomerID"),
+                        rs.getInt("EmployeeID"),
+                        rs.getInt("Quantity"),
+                        rs.getDouble("TotalPrice")
+                ));
+            }
+            orderTable.setItems(orderList);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void applyFilters(TableView<Order> orderTable, ObservableList<Order> orderList, TextField... filters) {
+        for (TextField filter : filters) {
+            filter.textProperty().addListener((observable, oldValue, newValue) ->
+                    filterOrders(orderTable, orderList, filters));
+        }
+    }
+
+    public static void filterOrders(TableView<Order> orderTable, ObservableList<Order> orderList, TextField[] filters) {
+        String orderidFilter = filters[0].getText();
+        String orderdateFilter = filters[1].getText();
+        String carIdFilter = filters[2].getText();
+        String customerIdFilter = filters[3].getText();
+        String employeeidFilter = filters[4].getText();
+        String quantityFilter = filters[5].getText();
+        String totalPriceFilter = filters[6].getText();
+
+        List<Order> filteredOrder = new ArrayList<>();
+        for (Order order : orderList) {
+            if (matchesFilters(order, orderidFilter, orderdateFilter, carIdFilter, customerIdFilter, employeeidFilter, quantityFilter, totalPriceFilter)) {
+                filteredOrder.add(order);
+            }
+        }
+
+        orderTable.setItems(FXCollections.observableArrayList(filteredOrder));
+    }
+
+    private static boolean matchesFilters(Order order, String orderId, String orderDate, String carId, String customerId, String employeeId, String quantity, String totalPrice) {
+        return (orderId.isEmpty() || Integer.toString(order.getOrderID()).contains(orderId)) &&
+                (orderDate.isEmpty() || order.getOrderDate().contains(orderDate)) &&
+                (carId.isEmpty() || Integer.toString(order.getCarID()).contains(carId)) &&
+                (customerId.isEmpty() || Integer.toString(order.getCustomerID()).contains(customerId)) &&
+                (employeeId.isEmpty() || Integer.toString(order.getEmployeeID()).contains(employeeId)) &&
+                (quantity.isEmpty() || Integer.toString(order.getQuantity()).contains(quantity)) &&
+                (totalPrice.isEmpty() || Double.toString(order.getTotalPrice()).contains(totalPrice));
+    }
+
+    public void addOrder(int orderID, String orderDate, int carID, int customerID, int employeeID, int quantity, double totalPrice) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "INSERT INTO orders (OrderID, OrderDate, CarID, CustomerID, EmployeeID, Quantity, TotalPrice) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            pstmt.setInt(1, orderID);
+            pstmt.setString(2, orderDate);
+            pstmt.setInt(3, carID);
+            pstmt.setInt(4, customerID);
+            pstmt.setInt(5, employeeID);
+            pstmt.setInt(6, quantity);
+            pstmt.setDouble(7, totalPrice);
+            pstmt.executeUpdate();
+            System.out.println("Order added successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void updateOrder(int orderID, String orderDate, int carID, int customerID, int employeeID, int quantity, double totalPrice) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "UPDATE orders SET OrderDate = ?, CarID = ?, CustomerID = ?, EmployeeID = ?, Quantity = ?, TotalPrice = ? WHERE OrderID = ?";
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            pstmt.setString(1, orderDate);
+            pstmt.setInt(2, carID);
+            pstmt.setInt(3, customerID);
+            pstmt.setInt(4, employeeID);
+            pstmt.setInt(5, quantity);
+            pstmt.setDouble(6, totalPrice);
+            pstmt.setInt(7, orderID);
+            pstmt.executeUpdate();
+            System.out.println("Order updated successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void deleteOrder(int orderID) {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "DELETE FROM orders WHERE OrderID = ?";
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            pstmt.setInt(1, orderID);
+            pstmt.executeUpdate();
+            System.out.println("Order deleted successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void clearTextFields(TextField... fields) {
+        for (TextField field : fields) {
+            field.clear();
+        }
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\Loginpage.java
+```
+package ui;
+
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.stage.Stage;
+import models.User;
+import utils.DatabaseConnection;
+
+public class Loginpage extends Application {
+
+    @Override
+    public void start(Stage primaryStage) {
+        String buttonStyle = "-fx-font-size: 14px; -fx-padding: 5; -fx-border-color: white; -fx-background-color: rgba(0, 0, 0, 0.6);"
+                + "-fx-text-fill: white; -fx-border-radius: 5; -fx-background-radius: 5; -fx-border-color: white;";
+
+        Button backButton = new Button("Back");
+        backButton.setStyle(buttonStyle);
+        backButton.setOnAction(e -> {
+            homepage homePage = new homepage();
+            homePage.start(new Stage());
+            primaryStage.close();
+        });
+
+        Label headerLabel = new Label("Login Page");
+        headerLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: white;");
+
+        HBox leftHeaderBox = new HBox(10);
+        leftHeaderBox.setAlignment(Pos.CENTER_LEFT);
+        leftHeaderBox.getChildren().addAll(headerLabel);
+
+        HBox rightHeaderBox = new HBox(10);
+        rightHeaderBox.setAlignment(Pos.CENTER_RIGHT);
+        rightHeaderBox.getChildren().addAll(backButton);
+
+        BorderPane header = new BorderPane();
+        header.setLeft(leftHeaderBox);
+        header.setRight(rightHeaderBox);
+        header.setPadding(new Insets(10));
+        header.getStyleClass().add("header");
+
+        BorderPane layout = new BorderPane();
+        // Image backgroundImage = new Image(getClass().getResource("demo/src/main/resources/com/example/resources/images/loginbg.jpg").toExternalForm());
+        // BackgroundSize backgroundSize = new BackgroundSize(100, 100, true, true, false, true);
+        // BackgroundImage bgImage = new BackgroundImage(
+        //         backgroundImage,
+        //         BackgroundRepeat.NO_REPEAT,
+        //         BackgroundRepeat.NO_REPEAT,
+        //         BackgroundPosition.CENTER,
+        //         backgroundSize
+        // );
+        // layout.setBackground(new Background(bgImage));
+        layout.setTop(header);
+
+        Rectangle rectangle = new Rectangle(400, 400);
+        rectangle.setFill(Color.rgb(0, 0, 0, 0.8));
+        rectangle.setArcWidth(20);
+        rectangle.setArcHeight(20);
+
+        GridPane gridPane = new GridPane();
+        gridPane.setAlignment(Pos.CENTER);
+        gridPane.setPadding(new Insets(20));
+        gridPane.setHgap(10);
+        gridPane.setVgap(10);
+
+        String labelStyle = "-fx-font-size: 15px;-fx-font-weight: bold; -fx-text-fill: white;";
+        String textfieldStyle = "-fx-font-size: 15px; -fx-padding: 5; -fx-border-radius: 20; -fx-background-radius: 20; "
+                + "-fx-border-color: white; -fx-background-color: rgba(0, 0, 0, 0.8); -fx-text-fill: white; "
+                + "-fx-prompt-text-fill: gray;";
+
+        Label lblUsername = new Label("Username:");
+        lblUsername.setStyle(labelStyle);
+        TextField txtUsername = new TextField();
+        txtUsername.setStyle(textfieldStyle);
+        txtUsername.setPromptText("Enter your username");
+
+        Label lblPassword = new Label("Password:");
+        lblPassword.setStyle(labelStyle);
+        PasswordField txtPassword = new PasswordField();
+        txtPassword.setStyle(textfieldStyle);
+        txtPassword.setPromptText("Enter your password");
+
+        Button btnLogin = new Button("Login");
+        btnLogin.setStyle(buttonStyle);
+        btnLogin.setOnAction(e -> {
+            String username = txtUsername.getText().trim();
+            String password = txtPassword.getText().trim();
+
+            User user = DatabaseConnection.getUserByUsernameAndPassword(username, password);
+
+            if (user != null) {
+                Label welcomeLabel = new Label("Login successful! Welcome, " + user.getUsername());
+                welcomeLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: black;");
+
+                ProgressBar progressBar = new ProgressBar(0);
+                progressBar.setPrefWidth(300);
+
+                VBox vbox = new VBox(10, welcomeLabel, progressBar);
+                // vbox.getStylesheets().add(getClass().getResource("demo\\src\\main\\resources\\com\\example\\resources\\style\\VBoxStyle.css").toExternalForm());
+                vbox.setAlignment(Pos.CENTER);
+
+                Scene progressScene = new Scene(vbox, 400, 200);
+                Stage progressStage = new Stage();
+                progressStage.setTitle("Welcome");
+                progressStage.setScene(progressScene);
+
+                progressStage.show();
+
+                new Thread(() -> {
+                    for (double progress = 0; progress <= 1; progress += 0.1) {
+                        final double currentProgress = progress;
+                        try {
+                            Thread.sleep(500);
+                            Platform.runLater(() -> progressBar.setProgress(currentProgress));
+                        } catch (InterruptedException ex) {
+                            ex.printStackTrace();
+                        }
+                    }
+                    Platform.runLater(() -> {
+                        dashboardpage dashboardPage = new dashboardpage();
+                        try {
+                            dashboardPage.start(new Stage());
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+                        primaryStage.close();
+                        progressStage.close();
+                    });
+                }).start();
+            } else {
+                showAlert("Invalid username or password. Please try again.");
+            }
+        });
+
+        gridPane.add(lblUsername, 0, 0);
+        gridPane.add(txtUsername, 1, 0);
+        gridPane.add(lblPassword, 0, 1);
+        gridPane.add(txtPassword, 1, 1);
+        GridPane.setHalignment(btnLogin, javafx.geometry.HPos.CENTER);
+        GridPane.setValignment(btnLogin, javafx.geometry.VPos.CENTER);
+        gridPane.add(btnLogin, 1, 2);
+
+        StackPane centerPane = new StackPane();
+        centerPane.getChildren().addAll(rectangle, gridPane);
+        centerPane.setAlignment(Pos.CENTER);
+
+        layout.setCenter(centerPane);
+
+        Scene scene = new Scene(layout, 800, 600);
+        primaryStage.setTitle("Login Page");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+    }
+
+    private void showAlert(String message) {
+        Stage alertStage = new Stage();
+        alertStage.setTitle("Message");
+        Rectangle rectangle = new Rectangle(400, 150);
+        rectangle.setFill(Color.rgb(0, 0, 0, 0.8));
+        rectangle.setArcWidth(20);
+        rectangle.setArcHeight(20);
+
+        Label messageLabel = new Label(message);
+        messageLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: white; -fx-font-weight: bold;");
+        messageLabel.setWrapText(true);
+        messageLabel.setMaxWidth(350);
+
+        Button okButton = new Button("OK");
+        okButton.setStyle("-fx-font-size: 14px; -fx-padding: 5; -fx-border-color: white; -fx-background-color: rgba(0, 0, 0, 0.6);"
+                + "-fx-text-fill: white; -fx-border-radius: 5; -fx-background-radius: 5; -fx-border-color: white;");
+        okButton.setOnAction(e -> alertStage.close());
+
+        VBox vbox = new VBox(10, messageLabel, okButton);
+        vbox.setAlignment(Pos.CENTER);
+        vbox.setPadding(new Insets(20));
+        vbox.setStyle("-fx-background-color: transparent;");
+
+        StackPane stackPane = new StackPane();
+        stackPane.getChildren().addAll(rectangle, vbox);
+        stackPane.setAlignment(Pos.CENTER);
+
+        Scene scene = new Scene(stackPane, 420, 180);
+        alertStage.setScene(scene);
+        alertStage.showAndWait();
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\homepage.java
+```
+package ui;
+
+import javafx.application.Application;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.stage.Stage;
+
+public class homepage extends Application {
+
+    @Override
+    public void start(Stage primaryStage) {
+        Label header = new Label("Car Shop Management System");
+        header.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-padding: 10; -fx-text-fill: white; -fx-background-color: black;");
+        header.setMaxWidth(Double.MAX_VALUE);
+
+        Button btnLogin = new Button(SessionManager.isLoggedIn() ? "Dashboard" : "Login");
+        String buttonStyle = "-fx-font-size: 14px; -fx-padding: 5; -fx-background-color: black; -fx-text-fill: white; -fx-border-radius: 5; -fx-background-radius: 5; -fx-border-color: white;";
+        btnLogin.setStyle(buttonStyle);
+        btnLogin.setOnAction(e -> {
+            if (SessionManager.isLoggedIn()) {
+                dashboardpage dashboardPage = new dashboardpage();
+                try {
+                    dashboardPage.start(new Stage());
+                    primaryStage.hide();
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            } else {
+                Loginpage loginPage = new Loginpage();
+                try {
+                    loginPage.start(new Stage());
+                    primaryStage.hide();
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
+        HBox headerBox = new HBox(10);
+        headerBox.setStyle("-fx-background-color: black;");
+        headerBox.setPadding(new Insets(10, 10, 10, 10));
+        headerBox.getChildren().addAll(header, btnLogin);
+        HBox.setHgrow(header, Priority.ALWAYS);
+        headerBox.setAlignment(Pos.CENTER_LEFT);
+
+        VBox contentArea = new VBox(20);
+        contentArea.setAlignment(Pos.CENTER);
+        contentArea.setPadding(new Insets(10));
+
+        Label searchLabel = new Label("Search");
+        searchLabel.setStyle("-fx-font-size: 20px;-fx-font-weight: bold; -fx-text-fill: white;");
+        searchLabel.setPadding(new Insets(50, 0, 0, 0));
+
+        HBox searchBox = new HBox(10);
+        searchBox.setAlignment(Pos.CENTER);
+
+        TextField searchBar = new TextField();
+        searchBar.setPromptText("Enter your search query...");
+        searchBar.setStyle(
+                "-fx-font-size: 15px; " +
+                        "-fx-padding: 5; " +
+                        "-fx-border-radius: 20; " +
+                        "-fx-background-radius: 20; " +
+                        "-fx-border-color: white; " +
+                        "-fx-background-color: rgba(0, 0, 0, 0.8); " +
+                        "-fx-text-fill: white; " +
+                        "-fx-prompt-text-fill: gray;"
+        );
+        searchBar.setMaxWidth(450);
+        searchBar.setPadding(new Insets(10, 0, 0, 0));
+
+        Button searchButton = new Button("Search");
+        searchButton.setStyle(
+                "-fx-font-size: 12px; " +
+                        "-fx-padding: 4; " +
+                        "-fx-border-radius: 10; " +
+                        "-fx-background-radius: 10; " +
+                        "-fx-border-color: white; " +
+                        "-fx-background-color: rgba(0, 0, 0, 0.8); " +
+                        "-fx-text-fill: white; "
+        );
+        searchButton.setOnAction(e -> {
+            String query = searchBar.getText().trim();
+            if (!query.isEmpty()) {
+                SearchResultPage resultPage = new SearchResultPage(query);
+                resultPage.showNewWindow();
+                primaryStage.close();
+            }
+        });
+
+        searchBox.getChildren().addAll(searchBar, searchButton);
+        contentArea.getChildren().addAll(searchLabel, searchBox);
+
+        BorderPane layout = new BorderPane();
+        layout.setTop(headerBox);
+        layout.setCenter(contentArea);
+
+        
+        layout.setBackground(new Background(new BackgroundFill(Color.BLACK, CornerRadii.EMPTY, Insets.EMPTY)));
+
+        Scene scene = new Scene(layout, 1000, 600);
+        primaryStage.setTitle("Car Shop Management System");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\EmployeeManagement.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import models.Employee;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class EmployeeManagement {
+
+    // Refresh employees
+    public static void refreshEmployees(TableView<Employee> employeeTable) {
+        employeeTable.getItems().clear();
+        String query = "SELECT * FROM employees";
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+            ObservableList<Employee> employeeList = FXCollections.observableArrayList();
+            while (rs.next()) {
+                employeeList.add(new Employee(
+                        rs.getInt("EmployeeID"),
+                        rs.getString("FirstName"),
+                        rs.getString("LastName"),
+                        rs.getString("Position"),
+                        rs.getDouble("Salary"),
+                        rs.getString("HireDate")
+                ));
+            }
+            employeeTable.setItems(employeeList);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void addEmployee(int employeeID, String firstName, String lastName, String position, double salary, String hireDate) {
+        String query = "INSERT INTO employees (EmployeeID, FirstName, LastName, Position, Salary, HireDate) VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, employeeID);
+            pstmt.setString(2, firstName);
+            pstmt.setString(3, lastName);
+            pstmt.setString(4, position);
+            pstmt.setDouble(5, salary);
+            pstmt.setString(6, hireDate);
+            pstmt.executeUpdate();
+            System.out.println("Employee added successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void updateEmployee(int employeeID, String firstName, String lastName, String position, double salary, String hireDate) {
+        String query = "UPDATE employees SET FirstName = ?, LastName = ?, Position = ?, Salary = ?, HireDate = ? WHERE EmployeeID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setString(1, firstName);
+            pstmt.setString(2, lastName);
+            pstmt.setString(3, position);
+            pstmt.setDouble(4, salary);
+            pstmt.setString(5, hireDate);
+            pstmt.setInt(6, employeeID);
+            pstmt.executeUpdate();
+            System.out.println("Employee updated successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public void deleteEmployee(int employeeID) {
+        String query = "DELETE FROM employees WHERE EmployeeID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(query)) {
+            pstmt.setInt(1, employeeID);
+            pstmt.executeUpdate();
+            System.out.println("Employee deleted successfully.");
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void applyFilters(TableView<Employee> employeeTable, ObservableList<Employee> employeeList, TextField... filters) {
+        for (TextField filter : filters) {
+            filter.textProperty().addListener((observable, oldValue, newValue) ->
+                    filterEmployees(employeeTable, employeeList, filters));
+        }
+    }
+
+    private static void filterEmployees(TableView<Employee> employeeTable, ObservableList<Employee> employeeList, TextField[] filters) {
+        String employeeIDFilter = filters[0].getText();
+        String firstNameFilter = filters[1].getText();
+        String lastNameFilter = filters[2].getText();
+        String positionFilter = filters[3].getText();
+        String salaryFilter = filters[4].getText();
+        String hireDateFilter = filters[5].getText();
+
+        List<Employee> filteredEmployees = new ArrayList<>();
+        for (Employee employee : employeeList) {
+            if (matchesFilters(employee, employeeIDFilter, firstNameFilter, lastNameFilter, positionFilter, salaryFilter, hireDateFilter)) {
+                filteredEmployees.add(employee);
+            }
+        }
+
+        employeeTable.setItems(FXCollections.observableArrayList(filteredEmployees));
+    }
+
+    private static boolean matchesFilters(Employee employee, String employeeID, String firstName, String lastName, String position, String salary, String hireDate) {
+        return (employeeID.isEmpty() || Integer.toString(employee.getEmployeeID()).contains(employeeID)) &&
+                (firstName.isEmpty() || employee.getFirstName().toLowerCase().contains(firstName.toLowerCase())) &&
+                (lastName.isEmpty() || employee.getLastName().toLowerCase().contains(lastName.toLowerCase())) &&
+                (position.isEmpty() || employee.getPosition().toLowerCase().contains(position.toLowerCase())) &&
+                (salary.isEmpty() || Double.toString(employee.getSalary()).contains(salary)) &&
+                (hireDate.isEmpty() || employee.getHireDate().contains(hireDate));
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\dashboardpage.java
+```
+package ui;
+
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import models.*;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+public class dashboardpage extends Application {
+    private StackPane mainContent = new StackPane();
+    private VBox reportsBox= new VBox();
+
+    @Override
+    public void start(Stage primaryStage) {
+
+        // Back Button
+        Button backButton = new Button("Back");
+        backButton.getStyleClass().add("button");  // Apply button style from CSS if needed
+        backButton.setOnAction(e -> {
+            try {
+                homepage homePage = new homepage();
+                homePage.start(new Stage()); // Initialize homepage
+                primaryStage.close(); // Close the current stage
+            } catch (Exception ex) {
+                ex.printStackTrace(); // Log any errors to the console
+            }
+
+        });
+
+        // Header Label
+        Label headerLabel = new Label("Dashboard");
+        headerLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: white;");
+
+        // Header Layout
+        HBox leftHeaderBox = new HBox(10);
+        leftHeaderBox.setAlignment(Pos.CENTER_LEFT);
+        leftHeaderBox.getChildren().addAll(backButton,headerLabel);
+
+        BorderPane header = new BorderPane();
+        header.setLeft(leftHeaderBox);
+        header.setPadding(new Insets(10));
+        header.getStyleClass().add("header");
+
+        // Root Layout
+        AnchorPane root = new AnchorPane();
+        root.setPrefSize(1050, 576);
+
+        // Set background image on root AnchorPane
+        // root.setStyle("-fx-background-image: url('" + getClass().getResource("demo\\src\\main\\resources\\com\\example\\resources\\images\\dashboard1bg.jpg").toExternalForm() + "');"
+        //         + "-fx-background-size: cover;"
+        //         + "-fx-background-position: center center;");
+
+        // Add the header to the root layout
+        root.getChildren().add(header);
+
+        // Position header
+        AnchorPane.setTopAnchor(header, 0.0);
+        AnchorPane.setLeftAnchor(header, 0.0);
+        AnchorPane.setRightAnchor(header, 0.0);
+
+        // Side Navigation Bar (VBox)
+        VBox sideNav = new VBox();
+        sideNav.setPrefWidth(256);
+        sideNav.setPrefSize(256,793);
+        sideNav.setStyle("-fx-background-color: #05071F;");
+        sideNav.setPadding(new Insets(80, 10, 10, 10));
+
+        // Buttons for navigation
+        //create all buttons without createnavbutton method
+        Button btnCars = new Button("Cars");
+        Button btnServices = new Button("Services");
+        Button btnCustomers = new Button("Customers");
+        Button btnPayment = new Button("Payment");
+        Button btnOrders = new Button("Orders");
+        Button btnEmployees = new Button("Employees");
+        Button btnReports = new Button("Reports");
+        Button btnSignout = new Button("Signout");
+
+        
+        
+
+        sideNav.getChildren().addAll(btnCars, btnServices, btnOrders, btnCustomers, btnPayment, btnEmployees, btnReports, btnSignout);
+
+        // Main Content Area (StackPane)
+        StackPane mainContent = new StackPane();
+        mainContent.setLayoutX(258);
+        mainContent.setPrefSize(793, 576);
+        mainContent.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
+        // Add sideNav and mainContent to root
+        root.getChildren().addAll(sideNav, mainContent);
+
+        // Position sideNav and mainContent
+        AnchorPane.setTopAnchor(sideNav, 0.0);
+        AnchorPane.setLeftAnchor(sideNav, 0.0);
+        AnchorPane.setTopAnchor(mainContent, 0.0);
+        AnchorPane.setLeftAnchor(mainContent, 258.0);
+        AnchorPane.setRightAnchor(mainContent, 0.0);
+        AnchorPane.setBottomAnchor(mainContent, 0.0);
+
+        // Move the side navigation behind the header
+        sideNav.toBack();
+
+        // Scene setup
+        Scene scene = new Scene(root);
+        // scene.getStylesheets().add(getClass().getResource("demo\\src\\main\\resources\\com\\example\\resources\\style\\DashboardStyle.css").toExternalForm());
+
+        primaryStage.setScene(scene);
+        primaryStage.setTitle("Dashboard");
+        primaryStage.centerOnScreen();
+        primaryStage.show();
+
+        // Button Actions
+        btnCars.setOnAction(e -> {
+            CarManagement carManagement = new CarManagement();
+            mainContent.getChildren().clear();
+
+            TableView<Car> carTable = new TableView<>();
+            carTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            carTable.setPrefSize(750, 400);
+
+            TableColumn<Car, Integer> colCarID = new TableColumn<>("Car ID");
+            colCarID.setCellValueFactory(new PropertyValueFactory<>("carId"));
+
+            TableColumn<Car, String> colMake = new TableColumn<>("Make");
+            colMake.setCellValueFactory(new PropertyValueFactory<>("make"));
+
+            TableColumn<Car, String> colModel = new TableColumn<>("Model");
+            colModel.setCellValueFactory(new PropertyValueFactory<>("model"));
+
+            TableColumn<Car, Integer> colYear = new TableColumn<>("Year");
+            colYear.setCellValueFactory(new PropertyValueFactory<>("year"));
+
+            TableColumn<Car, Double> colPrice = new TableColumn<>("Price");
+            colPrice.setCellValueFactory(new PropertyValueFactory<>("price"));
+
+            TableColumn<Car, Integer> colStock = new TableColumn<>("Stock");
+            colStock.setCellValueFactory(new PropertyValueFactory<>("stock"));
+
+            TableColumn<Car, String> colVIN = new TableColumn<>("VIN");
+            colVIN.setCellValueFactory(new PropertyValueFactory<>("vin"));
+
+            carTable.getColumns().addAll(colCarID, colMake, colModel, colYear, colPrice, colStock, colVIN);
+
+            carTable.setRowFactory(tv -> {
+                TableRow<Car> row = new TableRow<>();
+                row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+                return row;
+            });
+
+            // Load data from DB
+            ObservableList<Car> carList = FXCollections.observableArrayList();
+            try (Connection conn = DatabaseConnection.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM cars")) {
+                while (rs.next()) {
+                    carList.add(new Car(
+                            rs.getInt("CarID"),
+                            rs.getString("Make"),
+                            rs.getString("Model"),
+                            rs.getInt("Year"),
+                            rs.getDouble("Price"),
+                            rs.getInt("Stock"),
+                            rs.getString("VIN")
+                    ));
+                }
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+            carTable.setItems(carList);
+
+            // Input fields
+            TextField txtCarId = new TextField();
+            txtCarId.setPromptText("CarID");
+
+            TextField txtMake = new TextField();
+            txtMake.setPromptText("Make");
+
+            TextField txtModel = new TextField();
+            txtModel.setPromptText("Model");
+
+            TextField txtYear = new TextField();
+            txtYear.setPromptText("Year");
+
+            TextField txtPrice = new TextField();
+            txtPrice.setPromptText("Price");
+
+            TextField txtStock = new TextField();
+            txtStock.setPromptText("Stock");
+
+            TextField txtVIN = new TextField();
+            txtVIN.setPromptText("VIN");
+
+            CarManagement.applyFilters(carTable, carList, txtCarId, txtMake, txtModel, txtYear, txtPrice, txtStock, txtVIN);
+
+            HBox inputFields = new HBox(10, txtCarId,txtMake, txtModel, txtYear, txtPrice, txtStock, txtVIN);
+            inputFields.setPadding(new Insets(10));
+
+            Button btnAdd = new Button("Add");
+            Button btnUpdate = new Button("Update");
+            Button btnDelete = new Button("Delete");
+            Button btnDeleteAll = new Button("Delete All");
+            Button btnUpdateAll = new Button("Update All");
+
+            HBox actionButtons = new HBox(10, btnAdd, btnUpdate, btnDelete, btnDeleteAll,btnUpdateAll);
+            actionButtons.setPadding(new Insets(10));
+
+            btnAdd.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection();
+                     PreparedStatement pstmt = conn.prepareStatement("INSERT INTO cars (CarID, Make, Model, Year, Price, Stock, VIN) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+
+                    if (txtCarId.getText().isEmpty() || txtMake.getText().isEmpty() || txtModel.getText().isEmpty() ||
+                            txtYear.getText().isEmpty() || txtPrice.getText().isEmpty() || txtStock.getText().isEmpty() || txtVIN.getText().isEmpty()) {
+                        showAlert("All fields are required.");
+                        return;
+                    }
+
+                    // Check if CarID is unique
+                    String checkidSQL = "SELECT COUNT(*) FROM cars WHERE CarID = ?";
+                    try (PreparedStatement checkidStmt = conn.prepareStatement(checkidSQL)) {
+                        checkidStmt.setString(1, txtCarId.getText());
+                        try (ResultSet rs = checkidStmt.executeQuery()) {
+                            if (rs.next() && rs.getInt(1) > 0) {
+                                showAlert("ID is already taken.");
+                                return;
+                            }
+                        }
+                    }
+
+                    // Check if VIN is unique
+                    String checkVINSQL = "SELECT COUNT(*) FROM cars WHERE VIN = ?";
+                    try (PreparedStatement checkVINStmt = conn.prepareStatement(checkVINSQL)) {
+                        checkVINStmt.setString(1, txtVIN.getText());
+                        try (ResultSet rs = checkVINStmt.executeQuery()) {
+                            if (rs.next() && rs.getInt(1) > 0) {
+                                showAlert("VIN is already taken.");
+                                return;
+                            }
+                        }
+                    }
+
+                    pstmt.setInt(1, Integer.parseInt(txtCarId.getText()));
+                    pstmt.setString(2, txtMake.getText());
+                    pstmt.setString(3, txtModel.getText());
+                    pstmt.setInt(4, Integer.parseInt(txtYear.getText()));
+                    pstmt.setDouble(5, Double.parseDouble(txtPrice.getText()));
+                    pstmt.setInt(6, Integer.parseInt(txtStock.getText()));
+                    pstmt.setString(7, txtVIN.getText());
+                    pstmt.executeUpdate();
+
+                    carList.add(new Car(
+                            Integer.parseInt(txtCarId.getText()),
+                            txtMake.getText(),
+                            txtModel.getText(),
+                            Integer.parseInt(txtYear.getText()),
+                            Double.parseDouble(txtPrice.getText()),
+                            Integer.parseInt(txtStock.getText()),
+                            txtVIN.getText()
+                    ));
+                    showAlert("Car added successfully.");
+                    CarManagement.refreshCarTable(carTable);
+
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid input format: " + ex.getMessage());
+                }
+            });
+
+            btnUpdate.setOnAction(event -> {
+                String carIdText = txtCarId.getText();
+                if (carIdText.isEmpty()) {
+                    showAlert("Car ID is required");
+                    return;
+                }
+
+                int carID = Integer.parseInt(carIdText);
+                String make = txtMake.getText();
+                String model = txtModel.getText();
+                String yearText = txtYear.getText();
+                String priceText = txtPrice.getText();
+                String stockText = txtStock.getText();
+                String vin = txtVIN.getText();
+
+                StringBuilder sql = new StringBuilder("UPDATE cars SET ");
+                boolean firstCondition = true;
+
+                if (!make.isEmpty()) {
+                    sql.append(firstCondition ? "Make=?" : ", Make=?");
+                    firstCondition = false;
+                }
+                if (!model.isEmpty()) {
+                    sql.append(firstCondition ? "Model=?" : ", Model=?");
+                    firstCondition = false;
+                }
+                if (!yearText.isEmpty()) {
+                    sql.append(firstCondition ? "Year=?" : ", Year=?");
+                    firstCondition = false;
+                }
+                if (!priceText.isEmpty()) {
+                    sql.append(firstCondition ? "Price=?" : ", Price=?");
+                    firstCondition = false;
+                }
+                if (!stockText.isEmpty()) {
+                    sql.append(firstCondition ? "Stock=?" : ", Stock=?");
+                    firstCondition = false;
+                }
+                if (!vin.isEmpty()) {
+                    sql.append(firstCondition ? "VIN=?" : ", VIN=?");
+                    firstCondition = false;
+                }
+
+                sql.append(" WHERE CarID=?");
+
+                if (firstCondition) {
+                    showAlert("No fields to update. Please fill at least one field.");
+                    return;
+                }
+
+                try (Connection conn = DatabaseConnection.getConnection();
+                     PreparedStatement pstmt = conn.prepareStatement(sql.toString())) {
+
+                    int paramIndex = 1;
+                    if (!make.isEmpty()) pstmt.setString(paramIndex++, make);
+                    if (!model.isEmpty()) pstmt.setString(paramIndex++, model);
+                    if (!yearText.isEmpty()) pstmt.setInt(paramIndex++, Integer.parseInt(yearText));
+                    if (!priceText.isEmpty()) pstmt.setDouble(paramIndex++, Double.parseDouble(priceText));
+                    if (!stockText.isEmpty()) pstmt.setInt(paramIndex++, Integer.parseInt(stockText));
+                    if (!vin.isEmpty()) pstmt.setString(paramIndex++, vin);
+
+                    pstmt.setInt(paramIndex, carID);
+
+                    int rowsAffected = pstmt.executeUpdate();
+                    if (rowsAffected > 0) {
+                        Car selectedCar = carTable.getSelectionModel().getSelectedItem();
+                        if (selectedCar != null && selectedCar.getcarId() == carID) {
+                            if (!make.isEmpty()) selectedCar.setMake(make);
+                            if (!model.isEmpty()) selectedCar.setModel(model);
+                            if (!yearText.isEmpty()) selectedCar.setYear(Integer.parseInt(yearText));
+                            if (!priceText.isEmpty()) selectedCar.setPrice(Double.parseDouble(priceText));
+                            if (!stockText.isEmpty()) selectedCar.setStock(Integer.parseInt(stockText));
+                            if (!vin.isEmpty()) selectedCar.setVin(vin);
+                            carTable.refresh();
+                        } else {
+                            for (Car car : carList) {
+                                if (car.getcarId() == carID) {
+                                    if (!make.isEmpty()) car.setMake(make);
+                                    if (!model.isEmpty()) car.setModel(model);
+                                    if (!yearText.isEmpty()) car.setYear(Integer.parseInt(yearText));
+                                    if (!priceText.isEmpty()) car.setPrice(Double.parseDouble(priceText));
+                                    if (!stockText.isEmpty()) car.setStock(Integer.parseInt(stockText));
+                                    if (!vin.isEmpty()) car.setVin(vin);
+                                    break;
+                                }
+                            }
+                            carTable.refresh();
+                        }
+
+                        clearTextFields(txtCarId, txtMake, txtModel, txtYear, txtPrice, txtStock, txtVIN);
+                        showAlert("Data updated successfully.");
+                    } else {
+                        showAlert("No car found with the provided Car ID.");
+                    }
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid input format: " + ex.getMessage());
+                }
+            });
+
+            btnDelete.setOnAction(event -> {
+                String carId = txtCarId.getText();
+                if (carId.isEmpty()) {
+                    showAlert("CarID must be provided for deletion.");
+                    return;
+                }
+
+                Car selectedCar = carTable.getSelectionModel().getSelectedItem();
+                try (Connection conn = DatabaseConnection.getConnection();
+                     PreparedStatement pstmt = conn.prepareStatement("DELETE FROM cars WHERE CarID = ?")) {
+
+                    pstmt.setInt(1, Integer.parseInt(carId));
+                    int rowsAffected = pstmt.executeUpdate();
+
+                    if (rowsAffected > 0) {
+                        if (selectedCar != null && selectedCar.getcarId() == Integer.parseInt(carId)) {
+                            carList.remove(selectedCar);
+                        } else {
+                            carList.removeIf(car -> car.getcarId() == Integer.parseInt(carId));
+                        }
+                        clearTextFields(txtCarId, txtMake, txtModel, txtYear, txtPrice, txtStock, txtVIN);
+                        CarManagement.refreshCarTable(carTable);
+                        showAlert("Data deleted successfully.");
+                    } else {
+                        showAlert("No rows affected. Check if CarID exists.");
+                    }
+
+                } catch (SQLException ex) {
+                    if (ex instanceof SQLIntegrityConstraintViolationException) {
+                        showAlert("Cannot delete this car because it is referenced in another table (e.g., orders). Please delete associated records first.");
+                    } else {
+                        ex.printStackTrace();
+                        showAlert("Database error: " + ex.getMessage());
+                    }
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid CarID format. Please enter a valid number.");
+                }
+            });
+
+            VBox carsView = new VBox(10, carTable, inputFields, actionButtons);
+            carsView.setAlignment(Pos.CENTER);
+            carsView.setPadding(new Insets(10));
+            mainContent.getChildren().add(carsView);
+        });
+
+        btnServices.setOnAction(e -> {
+            ServiceManagement serviceManagement=new ServiceManagement();
+            mainContent.getChildren().clear();
+
+            TableView<Service> serviceTable = new TableView<>();
+            serviceTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            serviceTable.setPrefSize(750, 400);
+
+            TableColumn<Service, Integer> colServiceID = new TableColumn<>("ServiceID");
+            colServiceID.setCellValueFactory(new PropertyValueFactory<>("serviceID"));
+
+            TableColumn<Service, Integer> colCarID = new TableColumn<>("CarID");
+            colCarID.setCellValueFactory(new PropertyValueFactory<>("carID"));
+
+            TableColumn<Service, Integer> colCustomerID = new TableColumn<>("CustomerID");
+            colCustomerID.setCellValueFactory(new PropertyValueFactory<>("customerID"));
+
+            TableColumn<Service, String> colServiceDate = new TableColumn<>("Service Date");
+            colServiceDate.setCellValueFactory(new PropertyValueFactory<>("serviceDate"));
+
+            TableColumn<Service, String> colServiceDescription = new TableColumn<>("Service Description");
+            colServiceDescription.setCellValueFactory(new PropertyValueFactory<>("serviceDescription"));
+
+            TableColumn<Service, Double> colCost = new TableColumn<>("Cost");
+            colCost.setCellValueFactory(new PropertyValueFactory<>("cost"));
+
+            serviceTable.getColumns().addAll(colServiceID, colCarID, colCustomerID, colServiceDate, colServiceDescription, colCost);
+
+            // Load data
+            ObservableList<Service> serviceList = FXCollections.observableArrayList();
+            try (Connection conn = DatabaseConnection.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM services")) {
+                while (rs.next()) {
+                    serviceList.add(new Service(
+                            rs.getInt("ServiceID"),
+                            rs.getInt("CarID"),
+                            rs.getInt("CustomerID"),
+                            rs.getString("ServiceDate"),
+                            rs.getString("ServiceDescription"),
+                            rs.getDouble("Cost")
+                    ));
+                }
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+
+            serviceTable.setItems(serviceList);
+
+            TextField txtserviceID = new TextField();
+            txtserviceID.setPromptText("ServiceID");
+            TextField txtcarID = new TextField();
+            txtcarID.setPromptText("CarID");
+            TextField txtcustomerID = new TextField();
+            txtcustomerID.setPromptText("CustomerID");
+            TextField txtserviceDate = new TextField();
+            txtserviceDate.setPromptText("ServiceDate");
+            TextField txtserviceDescription = new TextField();
+            txtserviceDescription.setPromptText("ServiceDescription");
+            TextField txtcost = new TextField();
+            txtcost.setPromptText("Cost");
+
+            ServiceManagement.applyFilters(serviceTable, serviceList, txtserviceID, txtcarID, txtcustomerID, txtserviceDate, txtserviceDescription, txtcost);
+
+            serviceTable.setRowFactory(tv -> {
+                TableRow<Service> row = new TableRow<>();
+                row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+                return row;
+            });
+
+            Button btnAdd = new Button("Add");
+            Button btnUpdate = new Button("Update");
+            Button btnDelete = new Button("Delete");
+
+            HBox actionButtons = new HBox(10, btnAdd, btnUpdate, btnDelete);
+            actionButtons.setPadding(new Insets(10));
+
+            btnAdd.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    if (txtserviceID.getText().isEmpty() ||
+                            txtcarID.getText().isEmpty() ||
+                            txtcustomerID.getText().isEmpty() ||
+                            txtserviceDate.getText().isEmpty() ||
+                            txtserviceDescription.getText().isEmpty() ||
+                            txtcost.getText().isEmpty()) {
+                        serviceManagement.refreshServiceTable(serviceTable);
+                        showAlert("All fields are required for adding a service.");
+                        return;
+                    }
+
+                    // Validate CarID
+                    PreparedStatement carCheckStmt = conn.prepareStatement("SELECT COUNT(*) FROM cars WHERE CarID = ?");
+                    carCheckStmt.setInt(1, Integer.parseInt(txtcarID.getText()));
+                    ResultSet carCheckResult = carCheckStmt.executeQuery();
+                    carCheckResult.next();
+                    if (carCheckResult.getInt(1) == 0) {
+                        showAlert("Error: CarID does not exist.");
+                        return;
+                    }
+
+                    // Validate CustomerID
+                    PreparedStatement customerCheckStmt = conn.prepareStatement("SELECT COUNT(*) FROM customers WHERE CustomerID = ?");
+                    customerCheckStmt.setInt(1, Integer.parseInt(txtcustomerID.getText()));
+                    ResultSet customerCheckResult = customerCheckStmt.executeQuery();
+                    customerCheckResult.next();
+                    if (customerCheckResult.getInt(1) == 0) {
+                        showAlert("Error: CustomerID does not exist.");
+                        return;
+                    }
+
+                    // Check if ServiceID is unique
+                    String checkidSQL = "SELECT COUNT(*) FROM services WHERE ServiceID = ?";
+                    try (PreparedStatement checkidStmt = conn.prepareStatement(checkidSQL)) {
+                        checkidStmt.setString(1, txtserviceID.getText());
+                        try (ResultSet rs = checkidStmt.executeQuery()) {
+                            if (rs.next() && rs.getInt(1) > 0) {
+                                showAlert("ID is already taken.");
+                                return;
+                            }
+                        }
+                    }
+
+                    PreparedStatement pstmt = conn.prepareStatement(
+                            "INSERT INTO services (ServiceID, CarID, CustomerID, ServiceDate, ServiceDescription, Cost) VALUES (?, ?, ?, ?, ?, ?)"
+                    );
+                    pstmt.setInt(1, Integer.parseInt(txtserviceID.getText()));
+                    pstmt.setInt(2, Integer.parseInt(txtcarID.getText()));
+                    pstmt.setInt(3, Integer.parseInt(txtcustomerID.getText()));
+                    pstmt.setString(4, txtserviceDate.getText());
+                    pstmt.setString(5, txtserviceDescription.getText());
+                    pstmt.setDouble(6, Double.parseDouble(txtcost.getText()));
+                    pstmt.executeUpdate();
+
+                    showAlert("Service added successfully.");
+                    serviceManagement.refreshServiceTable(serviceTable);
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnUpdate.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    int serviceID = Integer.parseInt(txtserviceID.getText());
+                    StringBuilder queryBuilder = new StringBuilder("UPDATE services SET ");
+                    List<Object> parameters = new ArrayList<>();
+
+                    if (!txtcarID.getText().isEmpty()) {
+                        queryBuilder.append("CarID = ?, ");
+                        parameters.add(Integer.parseInt(txtcarID.getText()));
+                    }
+                    if (!txtcustomerID.getText().isEmpty()) {
+                        queryBuilder.append("CustomerID = ?, ");
+                        parameters.add(Integer.parseInt(txtcustomerID.getText()));
+                    }
+                    if (!txtserviceDate.getText().isEmpty()) {
+                        queryBuilder.append("ServiceDate = ?, ");
+                        parameters.add(txtserviceDate.getText());
+                    }
+                    if (!txtserviceDescription.getText().isEmpty()) {
+                        queryBuilder.append("ServiceDescription = ?, ");
+                        parameters.add(txtserviceDescription.getText());
+                    }
+                    if (!txtcost.getText().isEmpty()) {
+                        queryBuilder.append("Cost = ?, ");
+                        parameters.add(Double.parseDouble(txtcost.getText()));
+                    }
+
+                    if (parameters.isEmpty()) {
+                        showAlert("No fields to update. Please fill at least one field.");
+                        return;
+                    }
+
+                    queryBuilder.setLength(queryBuilder.length() - 2);
+                    queryBuilder.append(" WHERE ServiceID = ?");
+                    parameters.add(serviceID);
+
+                    PreparedStatement pstmt = conn.prepareStatement(queryBuilder.toString());
+                    for (int i = 0; i < parameters.size(); i++) {
+                        pstmt.setObject(i + 1, parameters.get(i));
+                    }
+
+                    int rowsUpdated = pstmt.executeUpdate();
+                    if (rowsUpdated > 0) {
+                        serviceManagement.refreshServiceTable(serviceTable);
+                        showAlert("Service updated successfully.");
+                    } else {
+                        showAlert("No service found with the given ServiceID.");
+                    }
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnDelete.setOnAction(event -> {
+                try {
+                    int serviceID = Integer.parseInt(txtserviceID.getText());
+                    serviceManagement.deleteService(serviceID);
+                    serviceManagement.refreshServiceTable(serviceTable);
+                    showAlert("Data deleted successfully.");
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid Service ID");
+                }
+            });
+
+            VBox servicesLayout = new VBox(10, serviceTable, new HBox(10, txtserviceID, txtcarID, txtcustomerID, txtserviceDate, txtserviceDescription, txtcost), actionButtons);
+            servicesLayout.setAlignment(Pos.CENTER);
+            servicesLayout.setPadding(new Insets(10));
+            mainContent.getChildren().add(servicesLayout);
+        });
+
+        // Similar event handlers for btnCustomers, btnOrders, btnPayment, btnEmployees, and btnReports
+        // Due to length, not re-pasting all. Use the same pattern:
+        // Clear mainContent, create table, load data, add input fields, add logic for Add/Update/Delete, etc.
+
+        btnCustomers.setOnAction(e -> {
+            // Implement similarly to above sections
+            CustomerManagement customerManagement = new CustomerManagement();
+            mainContent.getChildren().clear();
+
+            TableView<Customer> customerTable = new TableView<>();
+            customerTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            customerTable.setPrefSize(750, 450);
+
+            TableColumn<Customer, Integer> colCustomerID = new TableColumn<>("CustomerID");
+            colCustomerID.setCellValueFactory(new PropertyValueFactory<>("customerID"));
+
+            TableColumn<Customer, String> colFirstName = new TableColumn<>("First Name");
+            colFirstName.setCellValueFactory(new PropertyValueFactory<>("firstName"));
+
+            TableColumn<Customer, String> colLastName = new TableColumn<>("Last Name");
+            colLastName.setCellValueFactory(new PropertyValueFactory<>("lastName"));
+
+            TableColumn<Customer, String> colEmail = new TableColumn<>("Email");
+            colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
+
+            TableColumn<Customer, String> colPhone = new TableColumn<>("Phone");
+            colPhone.setCellValueFactory(new PropertyValueFactory<>("phone"));
+
+            TableColumn<Customer, String> colAddress = new TableColumn<>("Address");
+            colAddress.setCellValueFactory(new PropertyValueFactory<>("address"));
+
+            TableColumn<Customer, String> colCity = new TableColumn<>("City");
+            colCity.setCellValueFactory(new PropertyValueFactory<>("city"));
+
+            TableColumn<Customer, String> colState = new TableColumn<>("State");
+            colState.setCellValueFactory(new PropertyValueFactory<>("state"));
+
+            TableColumn<Customer, String> colZipCode = new TableColumn<>("Zip Code");
+            colZipCode.setCellValueFactory(new PropertyValueFactory<>("zipCode"));
+
+            customerTable.getColumns().addAll(colCustomerID, colFirstName, colLastName, colEmail, colPhone, colAddress, colCity, colState, colZipCode);
+
+            customerTable.setRowFactory(tv -> {
+                TableRow<Customer> row = new TableRow<>();
+                row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+                return row;
+            });
+
+            ObservableList<Customer> customerList = FXCollections.observableArrayList();
+            try (Connection conn = DatabaseConnection.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM customers")) {
+                while (rs.next()) {
+                    customerList.add(new Customer(
+                            rs.getInt("CustomerID"),
+                            rs.getString("FirstName"),
+                            rs.getString("LastName"),
+                            rs.getString("Email"),
+                            rs.getString("Phone"),
+                            rs.getString("Address"),
+                            rs.getString("City"),
+                            rs.getString("State"),
+                            rs.getString("ZipCode")
+                    ));
+                }
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+
+            customerTable.setItems(customerList);
+
+            TextField txtCustomerID = new TextField();
+            txtCustomerID.setPromptText("CustomerID");
+            TextField txtFirstName = new TextField();
+            txtFirstName.setPromptText("First Name");
+            TextField txtLastName = new TextField();
+            txtLastName.setPromptText("Last Name");
+            TextField txtEmail = new TextField();
+            txtEmail.setPromptText("Email");
+            TextField txtPhone = new TextField();
+            txtPhone.setPromptText("Phone");
+            TextField txtAddress = new TextField();
+            txtAddress.setPromptText("Address");
+            TextField txtCity = new TextField();
+            txtCity.setPromptText("City");
+            TextField txtState = new TextField();
+            txtState.setPromptText("State");
+            TextField txtZipCode = new TextField();
+            txtZipCode.setPromptText("Zip Code");
+
+            CustomerManagement.applyFilters(customerTable, customerList, txtCustomerID, txtFirstName, txtLastName, txtEmail, txtPhone, txtAddress, txtCity, txtState, txtZipCode);
+
+            Button btnAdd = new Button("Add");
+            Button btnUpdate = new Button("Update");
+            Button btnDelete = new Button("Delete");
+
+            HBox actionButtons = new HBox(10, btnAdd, btnUpdate, btnDelete);
+            actionButtons.setPadding(new Insets(10));
+
+            btnAdd.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    if (txtCustomerID.getText().isEmpty() ||
+                            txtFirstName.getText().isEmpty() ||
+                            txtLastName.getText().isEmpty() ||
+                            txtEmail.getText().isEmpty() ||
+                            txtPhone.getText().isEmpty() ||
+                            txtAddress.getText().isEmpty() ||
+                            txtCity.getText().isEmpty() ||
+                            txtState.getText().isEmpty() ||
+                            txtZipCode.getText().isEmpty()) {
+                        CustomerManagement.refreshCustomerTable(customerTable);
+                        showAlert("All fields are required.");
+                        return;
+                    }
+
+                    // Check unique CustomerID
+                    PreparedStatement checkStmt = conn.prepareStatement("SELECT COUNT(*) FROM customers WHERE CustomerID = ?");
+                    checkStmt.setInt(1, Integer.parseInt(txtCustomerID.getText()));
+                    ResultSet rs = checkStmt.executeQuery();
+                    rs.next();
+                    if (rs.getInt(1) > 0) {
+                        showAlert("CustomerID already exists.");
+                        return;
+                    }
+
+                    PreparedStatement pstmt = conn.prepareStatement(
+                            "INSERT INTO customers (CustomerID, FirstName, LastName, Email, Phone, Address, City, State, ZipCode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    );
+                    pstmt.setInt(1, Integer.parseInt(txtCustomerID.getText()));
+                    pstmt.setString(2, txtFirstName.getText());
+                    pstmt.setString(3, txtLastName.getText());
+                    pstmt.setString(4, txtEmail.getText());
+                    pstmt.setString(5, txtPhone.getText());
+                    pstmt.setString(6, txtAddress.getText());
+                    pstmt.setString(7, txtCity.getText());
+                    pstmt.setString(8, txtState.getText());
+                    pstmt.setString(9, txtZipCode.getText());
+                    pstmt.executeUpdate();
+                    CustomerManagement.refreshCustomerTable(customerTable);
+                    showAlert("Customer added successfully.");
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnUpdate.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    int customerID = Integer.parseInt(txtCustomerID.getText());
+                    StringBuilder queryBuilder = new StringBuilder("UPDATE customers SET ");
+                    List<Object> parameters = new ArrayList<>();
+
+                    if (!txtFirstName.getText().isEmpty()) {
+                        queryBuilder.append("FirstName = ?, ");
+                        parameters.add(txtFirstName.getText());
+                    }
+                    if (!txtLastName.getText().isEmpty()) {
+                        queryBuilder.append("LastName = ?, ");
+                        parameters.add(txtLastName.getText());
+                    }
+                    if (!txtEmail.getText().isEmpty()) {
+                        queryBuilder.append("Email = ?, ");
+                        parameters.add(txtEmail.getText());
+                    }
+                    if (!txtPhone.getText().isEmpty()) {
+                        queryBuilder.append("Phone = ?, ");
+                        parameters.add(txtPhone.getText());
+                    }
+                    if (!txtAddress.getText().isEmpty()) {
+                        queryBuilder.append("Address = ?, ");
+                        parameters.add(txtAddress.getText());
+                    }
+                    if (!txtCity.getText().isEmpty()) {
+                        queryBuilder.append("City = ?, ");
+                        parameters.add(txtCity.getText());
+                    }
+                    if (!txtState.getText().isEmpty()) {
+                        queryBuilder.append("State = ?, ");
+                        parameters.add(txtState.getText());
+                    }
+                    if (!txtZipCode.getText().isEmpty()) {
+                        queryBuilder.append("ZipCode = ?, ");
+                        parameters.add(txtZipCode.getText());
+                    }
+
+                    if (parameters.isEmpty()) {
+                        showAlert("Please provide at least one field to update.");
+                        return;
+                    }
+
+                    queryBuilder.setLength(queryBuilder.length() - 2);
+                    queryBuilder.append(" WHERE CustomerID = ?");
+                    parameters.add(customerID);
+
+                    PreparedStatement pstmt = conn.prepareStatement(queryBuilder.toString());
+                    for (int i = 0; i < parameters.size(); i++) {
+                        pstmt.setObject(i + 1, parameters.get(i));
+                    }
+
+                    int rowsUpdated = pstmt.executeUpdate();
+                    if (rowsUpdated > 0) {
+                        CustomerManagement.refreshCustomerTable(customerTable);
+                        showAlert("Customer updated successfully.");
+                    } else {
+                        showAlert("No customer found with the given CustomerID.");
+                    }
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnDelete.setOnAction(event -> {
+                try {
+                    int customerID = Integer.parseInt(txtCustomerID.getText());
+                    customerManagement.deleteCustomer(customerID);
+                    CustomerManagement.refreshCustomerTable(customerTable);
+                    showAlert("Data deleted successfully.");
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid Customer ID");
+                }
+            });
+
+            VBox customersLayout = new VBox(10, customerTable, new HBox(10, txtCustomerID, txtFirstName, txtLastName, txtEmail, txtPhone, txtAddress, txtCity, txtState, txtZipCode), actionButtons);
+            customersLayout.setAlignment(Pos.CENTER);
+            customersLayout.setPadding(new Insets(10));
+            mainContent.getChildren().add(customersLayout);
+        });
+
+        // Implement similarly for Orders, Payment, Employees, and Reports as previously shown.
+        // Due to the character limit and length, follow the same pattern for these buttons:
+        // 1) Clear mainContent
+        // 2) Create TableView and columns
+        // 3) Load data from DB
+        // 4) Create input fields, action buttons (Add, Update, Delete)
+        // 5) Implement event handlers similarly
+
+        btnOrders.setOnAction(e -> {
+            OrderManagement orderManagement = new OrderManagement();
+
+            mainContent.getChildren().clear();
+            TableView<Order> orderTable = new TableView<>();
+            orderTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            orderTable.setPrefSize(750, 400);
+
+            TableColumn<Order, Integer> colOrderID = new TableColumn<>("Order ID");
+            colOrderID.setCellValueFactory(new PropertyValueFactory<>("orderID"));
+
+            TableColumn<Order, String> colOrderDate = new TableColumn<>("Order Date");
+            colOrderDate.setCellValueFactory(new PropertyValueFactory<>("orderDate"));
+
+            TableColumn<Order, Integer> colCarID = new TableColumn<>("Car ID");
+            colCarID.setCellValueFactory(new PropertyValueFactory<>("carID"));
+
+            TableColumn<Order, Integer> colCustomerID = new TableColumn<>("Customer ID");
+            colCustomerID.setCellValueFactory(new PropertyValueFactory<>("customerID"));
+
+            TableColumn<Order, Integer> colEmployeeID = new TableColumn<>("Employee ID");
+            colEmployeeID.setCellValueFactory(new PropertyValueFactory<>("employeeID"));
+
+            TableColumn<Order, Integer> colQuantity = new TableColumn<>("Quantity");
+            colQuantity.setCellValueFactory(new PropertyValueFactory<>("quantity"));
+
+            TableColumn<Order, Double> colTotalPrice = new TableColumn<>("Total Price");
+            colTotalPrice.setCellValueFactory(new PropertyValueFactory<>("totalPrice"));
+
+            orderTable.getColumns().addAll(colOrderID, colOrderDate, colCarID, colCustomerID, colEmployeeID, colQuantity, colTotalPrice);
+            orderTable.setRowFactory(tv -> {
+                TableRow<Order> row = new TableRow<>();
+                row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+                return row;
+            });
+
+            ObservableList<Order> orderList = FXCollections.observableArrayList();
+            try (Connection conn = DatabaseConnection.getConnection();
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM orders")) {
+                while (rs.next()) {
+                    orderList.add(new Order(
+                            rs.getInt("OrderID"),
+                            rs.getString("OrderDate"),
+                            rs.getInt("CarID"),
+                            rs.getInt("CustomerID"),
+                            rs.getInt("EmployeeID"),
+                            rs.getInt("Quantity"),
+                            rs.getDouble("TotalPrice")
+                    ));
+                }
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+            orderTable.setItems(orderList);
+            TextField txtOrderID = new TextField();
+            txtOrderID.setPromptText("Order ID");
+
+            TextField txtOrderDate = new TextField();
+            txtOrderDate.setPromptText("Order Date (YYYY-MM-DD)");
+
+            TextField txtCarID = new TextField();
+            txtCarID.setPromptText("Car ID");
+
+            TextField txtCustomerID = new TextField();
+            txtCustomerID.setPromptText("Customer ID");
+
+            TextField txtEmployeeID = new TextField();
+            txtEmployeeID.setPromptText("Employee ID");
+
+            TextField txtQuantity = new TextField();
+            txtQuantity.setPromptText("Quantity");
+
+            TextField txtTotalPrice = new TextField();
+            txtTotalPrice.setPromptText("Total Price");
+
+            OrderManagement.applyFilters(orderTable, orderList, txtOrderID, txtOrderDate, txtCarID, txtCustomerID, txtEmployeeID, txtQuantity, txtTotalPrice);
+
+            Button btnAdd = new Button("Add");
+            Button btnUpdate = new Button("Update");
+            Button btnDelete = new Button("Delete");
+            HBox actionButtons = new HBox(10, btnAdd, btnUpdate, btnDelete);
+            actionButtons.setPadding(new Insets(10));
+
+            btnAdd.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    if (txtOrderID.getText().isEmpty() ||
+                            txtOrderDate.getText().isEmpty() ||
+                            txtCarID.getText().isEmpty() ||
+                            txtCustomerID.getText().isEmpty() ||
+                            txtEmployeeID.getText().isEmpty() ||
+                            txtQuantity.getText().isEmpty() ||
+                            txtTotalPrice.getText().isEmpty()) {
+                        orderManagement.refreshOrder(orderTable);
+                        showAlert("All fields are required to add an order.");
+                        return;
+                    }
+
+                    // Check if OrderID is unique
+                    PreparedStatement checkStmt = conn.prepareStatement("SELECT COUNT(*) FROM orders WHERE OrderID = ?");
+                    checkStmt.setInt(1, Integer.parseInt(txtOrderID.getText()));
+                    ResultSet rs = checkStmt.executeQuery();
+                    rs.next();
+                    if (rs.getInt(1) > 0) {
+                        showAlert("OrderID already exists. Please use a unique ID.");
+                        return;
+                    }
+
+                    PreparedStatement pstmt = conn.prepareStatement(
+                            "INSERT INTO orders (OrderID, OrderDate, CarID, CustomerID, EmployeeID, Quantity, TotalPrice) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    );
+                    pstmt.setInt(1, Integer.parseInt(txtOrderID.getText()));
+                    pstmt.setString(2, txtOrderDate.getText());
+                    pstmt.setInt(3, Integer.parseInt(txtCarID.getText()));
+                    pstmt.setInt(4, Integer.parseInt(txtCustomerID.getText()));
+                    pstmt.setInt(5, Integer.parseInt(txtEmployeeID.getText()));
+                    pstmt.setInt(6, Integer.parseInt(txtQuantity.getText()));
+                    pstmt.setDouble(7, Double.parseDouble(txtTotalPrice.getText()));
+                    pstmt.executeUpdate();
+
+                    orderManagement.refreshOrder(orderTable);
+                    showAlert("Order added successfully.");
+
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnUpdate.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    int orderID = Integer.parseInt(txtOrderID.getText());
+
+                    StringBuilder queryBuilder = new StringBuilder("UPDATE orders SET ");
+                    List<Object> parameters = new ArrayList<>();
+
+                    if (!txtOrderDate.getText().isEmpty()) {
+                        queryBuilder.append("OrderDate = ?, ");
+                        parameters.add(txtOrderDate.getText());
+                    }
+                    if (!txtCarID.getText().isEmpty()) {
+                        queryBuilder.append("CarID = ?, ");
+                        parameters.add(Integer.parseInt(txtCarID.getText()));
+                    }
+                    if (!txtCustomerID.getText().isEmpty()) {
+                        queryBuilder.append("CustomerID = ?, ");
+                        parameters.add(Integer.parseInt(txtCustomerID.getText()));
+                    }
+                    if (!txtEmployeeID.getText().isEmpty()) {
+                        queryBuilder.append("EmployeeID = ?, ");
+                        parameters.add(Integer.parseInt(txtEmployeeID.getText()));
+                    }
+                    if (!txtQuantity.getText().isEmpty()) {
+                        queryBuilder.append("Quantity = ?, ");
+                        parameters.add(Integer.parseInt(txtQuantity.getText()));
+                    }
+                    if (!txtTotalPrice.getText().isEmpty()) {
+                        queryBuilder.append("TotalPrice = ?, ");
+                        parameters.add(Double.parseDouble(txtTotalPrice.getText()));
+                    }
+
+                    if (parameters.isEmpty()) {
+                        showAlert("Please provide at least one field to update.");
+                        return;
+                    }
+
+                    queryBuilder.setLength(queryBuilder.length() - 2);
+                    queryBuilder.append(" WHERE OrderID = ?");
+                    parameters.add(orderID);
+
+                    PreparedStatement pstmt = conn.prepareStatement(queryBuilder.toString());
+                    for (int i = 0; i < parameters.size(); i++) {
+                        pstmt.setObject(i + 1, parameters.get(i));
+                    }
+
+                    int rowsUpdated = pstmt.executeUpdate();
+                    if (rowsUpdated > 0) {
+                        orderManagement.refreshOrder(orderTable);
+                        showAlert("Order updated successfully.");
+                    } else {
+                        showAlert("No order found with the given OrderID.");
+                    }
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnDelete.setOnAction(event -> {
+                try {
+                    int orderID = Integer.parseInt(txtOrderID.getText());
+                    orderManagement.deleteOrder(orderID);
+                    orderManagement.refreshOrder(orderTable);
+                    showAlert("Data deleted successfully.");
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid input.");
+                }
+            });
+
+            VBox orderLayout = new VBox(10,orderTable,new HBox(10, txtOrderID,txtOrderDate, txtCarID,txtCustomerID,txtEmployeeID, txtQuantity,txtTotalPrice ) , actionButtons  );
+            orderLayout.setAlignment(Pos.CENTER);
+            orderLayout.setPadding(new Insets(10));
+            mainContent.getChildren().add(orderLayout);
+        });
+
+        btnPayment.setOnAction(e -> {
+            PaymentManagement paymentManagement = new PaymentManagement();
+            mainContent.getChildren().clear();
+
+            TableView<Payment> paymentTable = new TableView<>();
+            paymentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            paymentTable.setPrefSize(750, 400);
+
+            TableColumn<Payment, Integer> colPaymentID = new TableColumn<>("Payment ID");
+            colPaymentID.setCellValueFactory(new PropertyValueFactory<>("paymentID"));
+
+            TableColumn<Payment, Integer> colOrderID = new TableColumn<>("Order ID");
+            colOrderID.setCellValueFactory(new PropertyValueFactory<>("orderID"));
+
+            TableColumn<Payment, String> colPaymentDate = new TableColumn<>("Payment Date");
+            colPaymentDate.setCellValueFactory(new PropertyValueFactory<>("paymentDate"));
+
+            TableColumn<Payment, String> colPaymentMethod = new TableColumn<>("Payment Method");
+            colPaymentMethod.setCellValueFactory(new PropertyValueFactory<>("paymentMethod"));
+
+            TableColumn<Payment, Double> colAmount = new TableColumn<>("Amount");
+            colAmount.setCellValueFactory(new PropertyValueFactory<>("amount"));
+
+            paymentTable.getColumns().addAll(colPaymentID, colOrderID, colPaymentDate, colPaymentMethod, colAmount);
+            paymentTable.setRowFactory(tv -> {
+                TableRow<Payment> row = new TableRow<>();
+                row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+                return row;
+            });
+
+            PaymentManagement.refreshPayments(paymentTable);
+            ObservableList<Payment> paymentList = FXCollections.observableArrayList(paymentTable.getItems());
+
+            TextField txtPaymentID = new TextField();
+            txtPaymentID.setPromptText("Payment ID");
+
+            TextField txtOrderID = new TextField();
+            txtOrderID.setPromptText("Order ID");
+
+            TextField txtPaymentDate = new TextField();
+            txtPaymentDate.setPromptText("Payment Date (YYYY-MM-DD)");
+
+            TextField txtPaymentMethod = new TextField();
+            txtPaymentMethod.setPromptText("Payment Method");
+
+            TextField txtAmount = new TextField();
+            txtAmount.setPromptText("Amount");
+
+            PaymentManagement.applyFilters(paymentTable, paymentList, txtPaymentID, txtOrderID, txtPaymentDate, txtPaymentMethod, txtAmount);
+
+            Button btnAdd = new Button("Add");
+            Button btnUpdate = new Button("Update");
+            Button btnDelete = new Button("Delete");
+            HBox actionButtons = new HBox(10, btnAdd, btnUpdate, btnDelete);
+            actionButtons.setPadding(new Insets(10));
+
+            btnAdd.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    if (txtPaymentID.getText().isEmpty() ||
+                            txtOrderID.getText().isEmpty() ||
+                            txtPaymentDate.getText().isEmpty() ||
+                            txtPaymentMethod.getText().isEmpty() ||
+                            txtAmount.getText().isEmpty()) {
+                        paymentManagement.refreshPayments(paymentTable);
+                        showAlert("All fields are required to add a payment.");
+                        return;
+                    }
+
+                    PreparedStatement checkStmt = conn.prepareStatement("SELECT COUNT(*) FROM payments WHERE PaymentID = ?");
+                    checkStmt.setInt(1, Integer.parseInt(txtPaymentID.getText()));
+                    ResultSet rs = checkStmt.executeQuery();
+                    rs.next();
+                    if (rs.getInt(1) > 0) {
+                        showAlert("PaymentID already exists.");
+                        return;
+                    }
+
+                    PreparedStatement pstmt = conn.prepareStatement(
+                            "INSERT INTO payments (PaymentID, OrderID, PaymentDate, PaymentMethod, Amount) VALUES (?, ?, ?, ?, ?)"
+                    );
+                    pstmt.setInt(1, Integer.parseInt(txtPaymentID.getText()));
+                    pstmt.setInt(2, Integer.parseInt(txtOrderID.getText()));
+                    pstmt.setString(3, txtPaymentDate.getText());
+                    pstmt.setString(4, txtPaymentMethod.getText());
+                    pstmt.setDouble(5, Double.parseDouble(txtAmount.getText()));
+                    pstmt.executeUpdate();
+
+                    paymentManagement.refreshPayments(paymentTable);
+                    showAlert("Payment added successfully.");
+
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnUpdate.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    int paymentID = Integer.parseInt(txtPaymentID.getText());
+                    StringBuilder queryBuilder = new StringBuilder("UPDATE payments SET ");
+                    List<Object> parameters = new ArrayList<>();
+
+                    if (!txtOrderID.getText().isEmpty()) {
+                        queryBuilder.append("OrderID = ?, ");
+                        parameters.add(Integer.parseInt(txtOrderID.getText()));
+                    }
+                    if (!txtPaymentDate.getText().isEmpty()) {
+                        queryBuilder.append("PaymentDate = ?, ");
+                        parameters.add(txtPaymentDate.getText());
+                    }
+                    if (!txtPaymentMethod.getText().isEmpty()) {
+                        queryBuilder.append("PaymentMethod = ?, ");
+                        parameters.add(txtPaymentMethod.getText());
+                    }
+                    if (!txtAmount.getText().isEmpty()) {
+                        queryBuilder.append("Amount = ?, ");
+                        parameters.add(Double.parseDouble(txtAmount.getText()));
+                    }
+
+                    if (parameters.isEmpty()) {
+                        showAlert("Please provide at least one field to update.");
+                        return;
+                    }
+
+                    queryBuilder.setLength(queryBuilder.length() - 2);
+                    queryBuilder.append(" WHERE PaymentID = ?");
+                    parameters.add(paymentID);
+
+                    PreparedStatement pstmt = conn.prepareStatement(queryBuilder.toString());
+                    for (int i = 0; i < parameters.size(); i++) {
+                        pstmt.setObject(i + 1, parameters.get(i));
+                    }
+
+                    int rowsUpdated = pstmt.executeUpdate();
+                    if (rowsUpdated > 0) {
+                        paymentManagement.refreshPayments(paymentTable);
+                        showAlert("Payment updated successfully.");
+                    } else {
+                        showAlert("No payment found with the given PaymentID.");
+                    }
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnDelete.setOnAction(event -> {
+                try {
+                    int paymentID = Integer.parseInt(txtPaymentID.getText());
+                    paymentManagement.deletePayment(paymentID);
+                    paymentManagement.refreshPayments(paymentTable);
+                    showAlert("Data deleted successfully.");
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid input.");
+                }
+            });
+
+            VBox paymentLayout = new VBox(10, paymentTable, new HBox(10, txtPaymentID, txtOrderID, txtPaymentDate, txtPaymentMethod, txtAmount), actionButtons);
+            paymentLayout.setAlignment(Pos.CENTER);
+            paymentLayout.setPadding(new Insets(10));
+            mainContent.getChildren().add(paymentLayout);
+        });
+
+        btnEmployees.setOnAction(e -> {
+            EmployeeManagement employeeManagement = new EmployeeManagement();
+            mainContent.getChildren().clear();
+
+            TableView<Employee> employeeTable = new TableView<>();
+            employeeTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+            employeeTable.setPrefSize(750, 400);
+
+            TableColumn<Employee, Integer> colEmployeeID = new TableColumn<>("Employee ID");
+            colEmployeeID.setCellValueFactory(new PropertyValueFactory<>("employeeID"));
+
+            TableColumn<Employee, String> colFirstName = new TableColumn<>("First Name");
+            colFirstName.setCellValueFactory(new PropertyValueFactory<>("firstName"));
+
+            TableColumn<Employee, String> colLastName = new TableColumn<>("Last Name");
+            colLastName.setCellValueFactory(new PropertyValueFactory<>("lastName"));
+
+            TableColumn<Employee, String> colPosition = new TableColumn<>("Position");
+            colPosition.setCellValueFactory(new PropertyValueFactory<>("position"));
+
+            TableColumn<Employee, Double> colSalary = new TableColumn<>("Salary");
+            colSalary.setCellValueFactory(new PropertyValueFactory<>("salary"));
+
+            TableColumn<Employee, String> colHireDate = new TableColumn<>("Hire Date");
+            colHireDate.setCellValueFactory(new PropertyValueFactory<>("hireDate"));
+
+            employeeTable.getColumns().addAll(colEmployeeID, colFirstName, colLastName, colPosition, colSalary, colHireDate);
+            employeeTable.setRowFactory(tv -> {
+                TableRow<Employee> row = new TableRow<>();
+                row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+                return row;
+            });
+
+            EmployeeManagement.refreshEmployees(employeeTable);
+            ObservableList<Employee> employeeList = FXCollections.observableArrayList(employeeTable.getItems());
+
+            TextField txtEmployeeID = new TextField();
+            txtEmployeeID.setPromptText("Employee ID");
+
+            TextField txtFirstName = new TextField();
+            txtFirstName.setPromptText("First Name");
+
+            TextField txtLastName = new TextField();
+            txtLastName.setPromptText("Last Name");
+
+            TextField txtPosition = new TextField();
+            txtPosition.setPromptText("Position");
+
+            TextField txtSalary = new TextField();
+            txtSalary.setPromptText("Salary");
+
+            TextField txtHireDate = new TextField();
+            txtHireDate.setPromptText("Hire Date (YYYY-MM-DD)");
+
+            EmployeeManagement.applyFilters(employeeTable, employeeList, txtEmployeeID, txtFirstName, txtLastName, txtPosition, txtSalary, txtHireDate);
+
+            Button btnAdd = new Button("Add");
+            Button btnUpdate = new Button("Update");
+            Button btnDelete = new Button("Delete");
+            HBox actionButtons = new HBox(10, btnAdd, btnUpdate, btnDelete);
+            actionButtons.setPadding(new Insets(10));
+
+            btnAdd.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    if (txtEmployeeID.getText().isEmpty() ||
+                            txtFirstName.getText().isEmpty() ||
+                            txtLastName.getText().isEmpty() ||
+                            txtPosition.getText().isEmpty() ||
+                            txtSalary.getText().isEmpty() ||
+                            txtHireDate.getText().isEmpty()) {
+                        employeeManagement.refreshEmployees(employeeTable);
+                        showAlert("All fields are required to add an employee.");
+                        return;
+                    }
+
+                    // Check unique EmployeeID
+                    PreparedStatement checkStmt = conn.prepareStatement("SELECT COUNT(*) FROM employees WHERE EmployeeID = ?");
+                    checkStmt.setInt(1, Integer.parseInt(txtEmployeeID.getText()));
+                    ResultSet rs = checkStmt.executeQuery();
+                    rs.next();
+                    if (rs.getInt(1) > 0) {
+                        showAlert("EmployeeID already exists. Please use a unique ID.");
+                        return;
+                    }
+
+                    employeeManagement.addEmployee(Integer.parseInt(txtEmployeeID.getText()),
+                            txtFirstName.getText(),
+                            txtLastName.getText(),
+                            txtPosition.getText(),
+                            Double.parseDouble(txtSalary.getText()),
+                            txtHireDate.getText());
+                    employeeManagement.refreshEmployees(employeeTable);
+                    showAlert("Employee added successfully.");
+
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnUpdate.setOnAction(event -> {
+                try (Connection conn = DatabaseConnection.getConnection()) {
+                    int employeeID = Integer.parseInt(txtEmployeeID.getText());
+
+                    StringBuilder queryBuilder = new StringBuilder("UPDATE employees SET ");
+                    List<Object> parameters = new ArrayList<>();
+
+                    if (!txtFirstName.getText().isEmpty()) {
+                        queryBuilder.append("FirstName = ?, ");
+                        parameters.add(txtFirstName.getText());
+                    }
+                    if (!txtLastName.getText().isEmpty()) {
+                        queryBuilder.append("LastName = ?, ");
+                        parameters.add(txtLastName.getText());
+                    }
+                    if (!txtPosition.getText().isEmpty()) {
+                        queryBuilder.append("Position = ?, ");
+                        parameters.add(txtPosition.getText());
+                    }
+                    if (!txtSalary.getText().isEmpty()) {
+                        queryBuilder.append("Salary = ?, ");
+                        parameters.add(Double.parseDouble(txtSalary.getText()));
+                    }
+                    if (!txtHireDate.getText().isEmpty()) {
+                        queryBuilder.append("HireDate = ?, ");
+                        parameters.add(txtHireDate.getText());
+                    }
+
+                    if (parameters.isEmpty()) {
+                        showAlert("Please provide at least one field to update.");
+                        return;
+                    }
+
+                    queryBuilder.setLength(queryBuilder.length() - 2);
+                    queryBuilder.append(" WHERE EmployeeID = ?");
+                    parameters.add(employeeID);
+
+                    PreparedStatement pstmt = conn.prepareStatement(queryBuilder.toString());
+                    for (int i = 0; i < parameters.size(); i++) {
+                        pstmt.setObject(i + 1, parameters.get(i));
+                    }
+
+                    int rowsUpdated = pstmt.executeUpdate();
+                    if (rowsUpdated > 0) {
+                        employeeManagement.refreshEmployees(employeeTable);
+                        showAlert("Employee updated successfully.");
+                    } else {
+                        showAlert("No employee found with the given EmployeeID.");
+                    }
+                } catch (SQLException | NumberFormatException ex) {
+                    ex.printStackTrace();
+                    showAlert("Invalid input or database error.");
+                }
+            });
+
+            btnDelete.setOnAction(event -> {
+                try {
+                    int employeeID = Integer.parseInt(txtEmployeeID.getText());
+                    employeeManagement.deleteEmployee(employeeID);
+                    employeeManagement.refreshEmployees(employeeTable);
+                    showAlert("Data deleted successfully.");
+                } catch (NumberFormatException ex) {
+                    showAlert("Invalid input.");
+                }
+            });
+
+            VBox employeeLayout = new VBox(10, employeeTable, new HBox(10, txtEmployeeID, txtFirstName, txtLastName, txtPosition, txtSalary, txtHireDate), actionButtons);
+            employeeLayout.setAlignment(Pos.CENTER);
+            employeeLayout.setPadding(new Insets(10));
+            mainContent.getChildren().add(employeeLayout);
+        });
+
+        btnReports.setOnAction(event -> showReportsMenu());
+
+        btnSignout.setOnAction(event -> {
+            Stage signOutStage = new Stage();
+            signOutStage.initModality(Modality.APPLICATION_MODAL);
+
+            VBox signOutLayout = new VBox(10);
+            signOutLayout.setAlignment(Pos.CENTER);
+            signOutLayout.setPadding(new Insets(20));
+
+            ProgressBar progressBar = new ProgressBar();
+            progressBar.setProgress(-1.0);
+            Label lblMessage = new Label("Signing out...");
+
+            signOutLayout.getChildren().addAll(lblMessage, progressBar);
+
+            Scene signOutScene = new Scene(signOutLayout, 300, 150);
+            signOutStage.setScene(signOutScene);
+            signOutStage.setTitle("Sign Out");
+            signOutStage.show();
+
+            new Thread(() -> {
+                try {
+                    Thread.sleep(2000);
+                    Platform.runLater(() -> {
+                        signOutStage.close();
+                        Loginpage loginPage = new Loginpage();
+                        try {
+                            loginPage.start(new Stage());
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+                        primaryStage.close();
+                    });
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        });
+    }
+
+    private Button createNavButton(String text, String iconPath) {
+        Button button = new Button(text);
+        button.setStyle("-fx-text-fill: #e7e5e5; -fx-background-color: transparent;");
+        button.setPrefSize(259, 42);
+
+        ImageView icon = new ImageView(getClass().getResource(iconPath).toExternalForm());
+        icon.setFitHeight(23);
+        icon.setFitWidth(27);
+        button.setGraphic(icon);
+        button.setContentDisplay(ContentDisplay.LEFT);
+        button.setAlignment(Pos.CENTER_LEFT);
+        button.setPadding(new Insets(10, 10, 10, 20));
+
+        return button;
+    }
+
+    private void showAlert(String message) {
+        Stage alertStage = new Stage();
+        alertStage.setTitle("Message");
+        Rectangle rectangle = new Rectangle(400, 150);
+        rectangle.setFill(Color.rgb(0, 0, 0, 0.8));
+        rectangle.setArcWidth(20);
+        rectangle.setArcHeight(20);
+
+        Label messageLabel = new Label(message);
+        messageLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: white; -fx-font-weight: bold;");
+        messageLabel.setWrapText(true);
+        messageLabel.setMaxWidth(350);
+
+        Button okButton = new Button("OK");
+        okButton.setStyle("-fx-font-size: 14px; -fx-padding: 5; -fx-border-color: white; -fx-background-color: rgba(0, 0, 0, 0.6);"
+                + "-fx-text-fill: white; -fx-border-radius: 5; -fx-background-radius: 5; -fx-border-color: white;");
+        okButton.setOnAction(e -> alertStage.close());
+
+        VBox vbox = new VBox(10, messageLabel, okButton);
+        vbox.setAlignment(Pos.CENTER);
+        vbox.setPadding(new Insets(20));
+        vbox.setStyle("-fx-background-color: transparent;");
+
+        StackPane stackPane = new StackPane();
+        stackPane.getChildren().addAll(rectangle, vbox);
+        stackPane.setAlignment(Pos.CENTER);
+
+        Scene scene = new Scene(stackPane, 420, 180);
+        alertStage.setScene(scene);
+        alertStage.showAndWait();
+    }
+
+    private void showReportsMenu() {
+        mainContent.getChildren().clear();
+
+        VBox reportsBox = new VBox(20);
+        reportsBox.setPadding(new Insets(20));
+        reportsBox.setAlignment(Pos.CENTER);
+        reportsBox.setStyle("-fx-background-color: rgba(0, 0, 0, 0.8); "
+                + "-fx-border-color: #ccc; "
+                + "-fx-border-width: 1; "
+                + "-fx-border-radius: 10; "
+                + "-fx-background-radius: 10;");
+
+        Label lblTitle = new Label("Generate Report");
+        lblTitle.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: white;");
+
+        Label lblReportType = new Label("Select Report Type:");
+        lblReportType.setStyle("-fx-font-size: 16px; -fx-text-fill: white;");
+
+        ComboBox<String> cmbReports = new ComboBox<>();
+        cmbReports.getItems().addAll(
+                "Services performed on a specific car/customer",
+                "Sales completed by a particular employee",
+                "Payment amounts and methods by a customer",
+                "Monthly/quarterly revenue by service type",
+                "Frequency of services by car model/customer category",
+                "Detailed history of service costs for specific vehicles"
+        );
+        cmbReports.setStyle("-fx-font-size: 14px; -fx-background-color: rgba(0, 0, 0, 0.8); -fx-text-fill: white;");
+
+        Label lblParam1 = new Label("Enter Parameter 1 (Optional):");
+        lblParam1.setStyle("-fx-font-size: 14px; -fx-text-fill: white;");
+
+        TextField txtParam1 = new TextField();
+        txtParam1.setStyle("-fx-font-size: 14px;");
+
+        Label lblParam2 = new Label("Enter Parameter 2 (Optional):");
+        lblParam2.setStyle("-fx-font-size: 14px; -fx-text-fill: white;");
+
+        TextField txtParam2 = new TextField();
+        txtParam2.setStyle("-fx-font-size: 14px;");
+
+        cmbReports.setOnAction(e -> {
+            String selectedReport = cmbReports.getValue();
+            if (selectedReport != null) {
+                switch (selectedReport) {
+                    case "Services performed on a specific car/customer":
+                        lblParam1.setText("Enter Car/Customer ID:");
+                        lblParam2.setText("Enter Service Date (Optional):");
+                        break;
+                    case "Sales completed by a particular employee":
+                        lblParam1.setText("Enter Employee ID:");
+                        lblParam2.setText("Enter Date Range (Optional):");
+                        break;
+                    case "Payment amounts and methods by a customer":
+                        lblParam1.setText("Enter Customer Name:");
+                        lblParam2.setText("Enter Payment Method (Optional):");
+                        break;
+                    case "Monthly/quarterly revenue by service type":
+                        lblParam1.setText("Enter Service Type:");
+                        lblParam2.setText("Enter Date Range (Optional):");
+                        break;
+                    case "Frequency of services by car model/customer category":
+                        lblParam1.setText("Enter Car Model/Category:");
+                        lblParam2.setText("Enter Time Period (Optional):");
+                        break;
+                    case "Detailed history of service costs for specific vehicles":
+                        lblParam1.setText("Enter Vehicle ID:");
+                        lblParam2.setText("Enter Date Range (Optional):");
+                        break;
+                    default:
+                        lblParam1.setText("Enter Parameter 1 (Optional):");
+                        lblParam2.setText("Enter Parameter 2 (Optional):");
+                        break;
+                }
+            }
+        });
+
+        Button btnGenerate = new Button("Generate Report");
+        btnGenerate.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-size: 16px; -fx-padding: 10px;");
+        btnGenerate.setOnAction(e -> {
+            String reportType = cmbReports.getValue();
+            String param1 = txtParam1.getText().trim();
+            String param2 = txtParam2.getText().trim();
+
+            if (reportType == null || reportType.isEmpty()) {
+                Alert alert = new Alert(Alert.AlertType.WARNING, "Please select a report type!");
+                alert.show();
+            } else {
+                showAlert("Report Generated successfully.");
+            }
+        });
+
+        reportsBox.getChildren().addAll(lblTitle, lblReportType, cmbReports, lblParam1, txtParam1, lblParam2, txtParam2, btnGenerate);
+        StackPane.setAlignment(reportsBox, Pos.TOP_CENTER);
+        StackPane.setMargin(reportsBox, new Insets(100, 100, 100, 100));
+        mainContent.getChildren().add(reportsBox);
+    }
+
+    private void clearTextFields(TextField... fields) {
+        for (TextField field : fields) {
+            field.clear();
+        }
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\CustomerManagement.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import models.Customer;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class CustomerManagement {
+
+    // Refresh the customer table with data from the database
+    public static void refreshCustomerTable(TableView<Customer> customerTable) {
+        customerTable.getItems().clear();
+
+        String query = "SELECT * FROM customers";
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(query)) {
+
+            ObservableList<Customer> customers = FXCollections.observableArrayList();
+
+            while (rs.next()) {
+                Customer customer = new Customer(
+                        rs.getInt("CustomerID"),
+                        rs.getString("FirstName"),
+                        rs.getString("LastName"),
+                        rs.getString("Email"),
+                        rs.getString("Phone"),
+                        rs.getString("Address"),
+                        rs.getString("City"),
+                        rs.getString("State"),
+                        rs.getString("ZipCode")
+                );
+                customers.add(customer);
+            }
+            customerTable.setItems(customers);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    // Update customer in the database
+    public void updateCustomer(int customerID, String firstName, String lastName, String email, String phone, String address, String city, String state, String zipCode) {
+        String updateQuery = "UPDATE customers SET FirstName = ?, LastName = ?, Email = ?, Phone = ?, Address = ?, City = ?, State = ?, ZipCode = ? WHERE CustomerID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(updateQuery)) {
+
+            pstmt.setString(1, firstName);
+            pstmt.setString(2, lastName);
+            pstmt.setString(3, email);
+            pstmt.setString(4, phone);
+            pstmt.setString(5, address);
+            pstmt.setString(6, city);
+            pstmt.setString(7, state);
+            pstmt.setString(8, zipCode);
+            pstmt.setInt(9, customerID);
+
+            pstmt.executeUpdate();
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    // Apply filters to the customer table
+    public static void applyFilters(TableView<Customer> customerTable, ObservableList<Customer> customerList, TextField... filters) {
+        for (TextField filter : filters) {
+            filter.textProperty().addListener((observable, oldValue, newValue) ->
+                    filterCustomers(customerTable, customerList, filters));
+        }
+    }
+
+    public static void filterCustomers(TableView<Customer> customerTable, ObservableList<Customer> customerList, TextField[] filters) {
+        String idFilter = filters[0].getText();
+        String firstNameFilter = filters[1].getText();
+        String lastNameFilter = filters[2].getText();
+        String emailFilter = filters[3].getText();
+        String phoneFilter = filters[4].getText();
+
+        List<Customer> filteredCustomers = new ArrayList<>();
+        for (Customer customer : customerList) {
+            if (matchesFilters(customer, idFilter, firstNameFilter, lastNameFilter, emailFilter, phoneFilter)) {
+                filteredCustomers.add(customer);
+            }
+        }
+
+        customerTable.setItems(FXCollections.observableArrayList(filteredCustomers));
+    }
+
+    private static boolean matchesFilters(Customer customer, String id, String firstName, String lastName, String email, String phone) {
+        return (id.isEmpty() || Integer.toString(customer.getCustomerID()).contains(id)) &&
+                (firstName.isEmpty() || customer.getFirstName().toLowerCase().contains(firstName.toLowerCase())) &&
+                (lastName.isEmpty() || customer.getLastName().toLowerCase().contains(lastName.toLowerCase())) &&
+                (email.isEmpty() || customer.getEmail().toLowerCase().contains(email.toLowerCase())) &&
+                (phone.isEmpty() || customer.getPhone().contains(phone));
+    }
+
+    // Delete customer from the database
+    public void deleteCustomer(int customerID) {
+        String deleteQuery = "DELETE FROM customers WHERE CustomerID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(deleteQuery)) {
+
+            pstmt.setInt(1, customerID);
+            pstmt.executeUpdate();
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    // Clear text fields
+    public void clearTextFields(TextField... fields) {
+        for (TextField field : fields) {
+            field.clear();
+        }
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\CarManagement.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.control.Alert;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import models.Car;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class CarManagement {
+    // Method to refresh the car table from the database
+    public static void refreshCarTable(TableView<Car> carTable) {
+        ObservableList<Car> carList = FXCollections.observableArrayList();
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM cars")) {
+            while (rs.next()) {
+                carList.add(new Car(
+                        rs.getInt("CarID"),
+                        rs.getString("Make"),
+                        rs.getString("Model"),
+                        rs.getInt("Year"),
+                        rs.getDouble("Price"),
+                        rs.getInt("Stock"),
+                        rs.getString("VIN")
+                ));
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        carTable.setItems(carList);
+    }
+
+    public static void updateCar(int carID, String make, String model, int year, double price, int stock, String vin) {
+        String updateQuery = "UPDATE cars SET Make = ?, Model = ?, Year = ?, Price = ?, Stock = ?, VIN = ? WHERE CarID = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(updateQuery)) {
+
+            pstmt.setString(1, make);
+            pstmt.setString(2, model);
+            pstmt.setInt(3, year);
+            pstmt.setDouble(4, price);
+            pstmt.setInt(5, stock);
+            pstmt.setString(6, vin);
+            pstmt.setInt(7, carID);
+
+            pstmt.executeUpdate();
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public static void applyFilters(TableView<Car> carTable, ObservableList<Car> carList, TextField... filters) {
+        filters[0].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+        filters[1].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+        filters[2].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+        filters[3].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+        filters[4].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+        filters[5].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+        filters[6].textProperty().addListener((observable, oldValue, newValue) -> filterCars(carTable, carList, filters));
+    }
+
+    private static void filterCars(TableView<Car> carTable, ObservableList<Car> carList, TextField[] filters) {
+        String carIdFilter = filters[0].getText();
+        String makeFilter = filters[1].getText();
+        String modelFilter = filters[2].getText();
+        String yearFilter = filters[3].getText();
+        String priceFilter = filters[4].getText();
+        String stockFilter = filters[5].getText();
+        String vinFilter = filters[6].getText();
+
+        List<Car> filteredCars = new ArrayList<>();
+        for (Car car : carList) {
+            if (matchesFilters(car, carIdFilter, makeFilter, modelFilter, yearFilter, priceFilter, stockFilter, vinFilter)) {
+                filteredCars.add(car);
+            }
+        }
+
+        carTable.setItems(FXCollections.observableArrayList(filteredCars));
+    }
+
+    private static boolean matchesFilters(Car car, String carId, String make, String model, String year, String price, String stock, String vin) {
+        return (carId.isEmpty() || Integer.toString(car.getcarId()).contains(carId)) &&
+                (make.isEmpty() || car.getMake().toLowerCase().contains(make.toLowerCase())) &&
+                (model.isEmpty() || car.getModel().toLowerCase().contains(model.toLowerCase())) &&
+                (year.isEmpty() || Integer.toString(car.getYear()).contains(year)) &&
+                (price.isEmpty() || Double.toString(car.getPrice()).contains(price)) &&
+                (stock.isEmpty() || Integer.toString(car.getStock()).contains(stock)) &&
+                (vin.isEmpty() || car.getVin().toLowerCase().contains(vin.toLowerCase()));
+    }
+
+    private static void clearTextFields(TextField txtCarId, TextField txtMake, TextField txtModel,
+                                        TextField txtYear, TextField txtPrice, TextField txtStock, TextField txtVIN) {
+        txtCarId.clear();
+        txtMake.clear();
+        txtModel.clear();
+        txtYear.clear();
+        txtPrice.clear();
+        txtStock.clear();
+        txtVIN.clear();
+    }
+
+    private void showAlert(String message) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Information");
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\ui\ButtonHandler.java
+```
+package ui;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.HBox;
+import models.Car;
+import utils.DatabaseConnection;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+public class ButtonHandler {
+
+    public static void setupCarButton(TableView<Car> carTable, ObservableList<Car> carList) {
+        // Define columns
+        TableColumn<Car, Integer> colCarID = new TableColumn<>("Car ID");
+        colCarID.setCellValueFactory(new PropertyValueFactory<>("carId"));
+
+        TableColumn<Car, String> colMake = new TableColumn<>("Make");
+        colMake.setCellValueFactory(new PropertyValueFactory<>("make"));
+
+        TableColumn<Car, String> colModel = new TableColumn<>("Model");
+        colModel.setCellValueFactory(new PropertyValueFactory<>("model"));
+
+        TableColumn<Car, Integer> colYear = new TableColumn<>("Year");
+        colYear.setCellValueFactory(new PropertyValueFactory<>("year"));
+
+        TableColumn<Car, Double> colPrice = new TableColumn<>("Price");
+        colPrice.setCellValueFactory(new PropertyValueFactory<>("price"));
+
+        TableColumn<Car, Integer> colStock = new TableColumn<>("Stock");
+        colStock.setCellValueFactory(new PropertyValueFactory<>("stock"));
+
+        TableColumn<Car, String> colVIN = new TableColumn<>("VIN");
+        colVIN.setCellValueFactory(new PropertyValueFactory<>("vin"));
+
+        carTable.getColumns().addAll(colCarID, colMake, colModel, colYear, colPrice, colStock, colVIN);
+        carTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        carTable.setPrefSize(750, 400);
+
+        carTable.setRowFactory(tv -> {
+            TableRow<Car> row = new TableRow<>();
+            row.setStyle("-fx-background-color: rgba(0, 0, 0, 0.1); -fx-border-color: white; -fx-text-fill: white;");
+            return row;
+        });
+
+        // Load data from the database
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM cars")) {
+
+            while (rs.next()) {
+                carList.add(new Car(
+                        rs.getInt("CarID"),
+                        rs.getString("Make"),
+                        rs.getString("Model"),
+                        rs.getInt("Year"),
+                        rs.getDouble("Price"),
+                        rs.getInt("Stock"),
+                        rs.getString("VIN")
+                ));
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+
+        carTable.setItems(carList);
+    }
+
+    public static HBox createInputFields(TextField... fields) {
+        for (TextField field : fields) {
+            field.setPadding(new Insets(5));
+        }
+        HBox inputFields = new HBox(10, fields);
+        inputFields.setPadding(new Insets(10));
+        return inputFields;
+    }
+
+    public static HBox createActionButtons(Button... buttons) {
+        for (Button button : buttons) {
+            button.setStyle("-fx-background-color: #007BFF; -fx-text-fill: white; -fx-padding: 5 10;");
+        }
+        HBox actionButtons = new HBox(10, buttons);
+        actionButtons.setPadding(new Insets(10));
+        return actionButtons;
+    }
+
+    public static void clearTextFields(TextField... fields) {
+        for (TextField field : fields) {
+            field.clear();
+        }
+    }
+
+    public static void refreshCarTable(TableView<Car> carTable) {
+        carTable.refresh();
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\User.java
+```
+package models;
+
+public class User {
+    private String username;
+    private String password;
+
+    // Constructor
+    public User(String username, String password) {
+        this.username = username;
+        this.password = password;
+    }
+
+    // Getters and Setters
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+       this.password = password;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\Service.java
+```
+package models;
+
+public class Service {
+
+    private int serviceID;
+    private int carID;
+    private int customerID;
+    private String serviceDate;
+    private String serviceDescription;
+    private double cost;
+
+    // Constructor
+    public Service(int serviceID, int carID, int customerID, String serviceDate, String serviceDescription, double cost) {
+        this.serviceID = serviceID;
+        this.carID = carID;
+        this.customerID = customerID;
+        this.serviceDate = serviceDate;
+        this.serviceDescription = serviceDescription;
+        this.cost = cost;
+    }
+
+    // Getters and setters
+    public int getServiceID() {
+        return serviceID;
+    }
+
+    public void setServiceID(int serviceID) {
+        this.serviceID = serviceID;
+    }
+
+    public int getCarID() {
+        return carID;
+    }
+
+    public void setCarID(int carID) {
+        this.carID = carID;
+    }
+
+    public int getCustomerID() {
+        return customerID;
+    }
+
+    public void setCustomerID(int customerID) {
+        this.customerID = customerID;
+    }
+
+    public String getServiceDate() {
+        return serviceDate;
+    }
+
+    public void setServiceDate(String serviceDate) {
+        this.serviceDate = serviceDate;
+    }
+
+    public String getServiceDescription() {
+        return serviceDescription;
+    }
+
+    public void setServiceDescription(String serviceDescription) {
+        this.serviceDescription = serviceDescription;
+    }
+
+    public double getCost() {
+        return cost;
+    }
+
+    public void setCost(double cost) {
+        this.cost = cost;
+    }
+
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\Payment.java
+```
+package models;
+
+public class Payment {
+  private int paymentID;
+  private int orderID;
+  private String paymentDate;
+  private String paymentMethod;
+  private double amount;
+
+  // Constructor
+  public Payment(int paymentID, int orderID, String paymentDate, String paymentMethod, double amount) {
+    this.paymentID = paymentID;
+    this.orderID = orderID;
+    this.paymentDate = paymentDate;
+    this.paymentMethod = paymentMethod;
+    this.amount = amount;
+  }
+
+  // Getters and Setters
+  public int getPaymentID() {
+    return paymentID;
+  }
+
+  public void setPaymentID(int paymentID) {
+    this.paymentID = paymentID;
+  }
+
+  public int getOrderID() {
+    return orderID;
+  }
+
+  public void setOrderID(int orderID) {
+    this.orderID = orderID;
+  }
+
+  public String getPaymentDate() {
+    return paymentDate;
+  }
+
+  public void setPaymentDate(String paymentDate) {
+    this.paymentDate = paymentDate;
+  }
+
+  public String getPaymentMethod() {
+    return paymentMethod;
+  }
+
+  public void setPaymentMethod(String paymentMethod) {
+    this.paymentMethod = paymentMethod;
+  }
+
+  public double getAmount() {
+    return amount;
+  }
+
+  public void setAmount(double amount) {
+    this.amount = amount;
+  }
+
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\Order.java
+```
+package models;
+
+public class Order {
+    private int orderID;
+    private String orderDate;
+    private int carID;
+    private int customerID;
+    private int employeeID;
+    private int quantity;
+    private double totalPrice;
+
+    public Order(int orderID, String orderDate, int carID, int customerID, int employeeID, int quantity, double totalPrice) {
+        this.orderID = orderID;
+        this.orderDate = orderDate;
+        this.carID = carID;
+        this.customerID = customerID;
+        this.employeeID = employeeID;
+        this.quantity = quantity;
+        this.totalPrice = totalPrice;
+    }
+
+    // Getters and Setters
+    public int getOrderID() {
+        return orderID;
+    }
+
+    public void setOrderID(int orderID) {
+        this.orderID = orderID;
+    }
+
+    public String getOrderDate() {
+        return orderDate;
+    }
+
+    public void setOrderDate(String orderDate) {
+        this.orderDate = orderDate;
+    }
+
+    public int getCarID() {
+        return carID;
+    }
+
+    public void setCarID(int carID) {
+        this.carID = carID;
+    }
+
+    public int getCustomerID() {
+        return customerID;
+    }
+
+    public void setCustomerID(int customerID) {
+        this.customerID = customerID;
+    }
+
+    public int getEmployeeID() {
+        return employeeID;
+    }
+
+    public void setEmployeeID(int employeeID) {
+        this.employeeID = employeeID;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(int quantity) {
+        this.quantity = quantity;
+    }
+
+
+    public double getTotalPrice() {
+        return totalPrice;
+    }
+
+    public void setTotalPrice(double totalPrice) {
+        this.totalPrice = totalPrice;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\Employee.java
+```
+package models;
+
+public class Employee {
+    private int employeeID;
+    private String firstName;
+    private String lastName;
+    private String position;
+    private double salary;
+    private String hireDate;
+
+    public Employee(int employeeID, String firstName, String lastName, String position, double salary, String hireDate) {
+        this.employeeID = employeeID;
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.position = position;
+        this.salary = salary;
+        this.hireDate = hireDate;
+    }
+
+    // Getters and setters
+    public int getEmployeeID() {
+        return employeeID;
+    }
+
+    public void setEmployeeID(int employeeID) {
+        this.employeeID = employeeID;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public String getPosition() {
+        return position;
+    }
+
+    public void setPosition(String position) {
+        this.position = position;
+    }
+
+    public double getSalary() {
+        return salary;
+    }
+
+    public void setSalary(double salary) {
+        this.salary = salary;
+    }
+
+    public String getHireDate() {
+        return hireDate;
+    }
+
+    public void setHireDate(String hireDate) {
+        this.hireDate = hireDate;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\Customer.java
+```
+package models;
+
+public class Customer {
+    private int customerID;
+    private String firstName;
+    private String lastName;
+    private String email;
+    private String phone;
+    private String address;
+    private String city;
+    private String state;
+    private String zipCode;
+
+    // Constructor
+    public Customer(int customerID, String firstName, String lastName, String email, String phone, String address, String city, String state, String zipCode) {
+        this.customerID = customerID;
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.email = email;
+        this.phone = phone;
+        this.address = address;
+        this.city = city;
+        this.state = state;
+        this.zipCode = zipCode;
+    }
+
+    // Getters and Setters
+    public int getCustomerID() {
+        return customerID;
+    }
+
+    public void setCustomerID(int customerID) {
+        this.customerID = customerID;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
+    }
+
+    public String getZipCode() {
+        return zipCode;
+    }
+
+    public void setZipCode(String zipCode) {
+        this.zipCode = zipCode;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\models\Car.java
+```
+package models;
+
+import javafx.beans.property.*;
+import javafx.beans.property.IntegerProperty;
+import javafx.beans.property.SimpleIntegerProperty;
+
+public class Car {
+    private final IntegerProperty carId;
+    private final StringProperty make;
+    private final StringProperty model;
+    private final IntegerProperty year;
+    private final DoubleProperty price;
+    private final IntegerProperty stock;
+    private final StringProperty vin;
+
+    // Constructor with parameters
+    public Car(int carId, String make, String model, int year, double price, int stock, String vin) {
+        this.carId = new SimpleIntegerProperty(carId);
+        this.make = new SimpleStringProperty(make);
+        this.model = new SimpleStringProperty(model);
+        this.year = new SimpleIntegerProperty(year);
+        this.price = new SimpleDoubleProperty(price);
+        this.stock = new SimpleIntegerProperty(stock);
+        this.vin = new SimpleStringProperty(vin);
+    }
+
+    // Default constructor for creating an empty car object
+    public Car() {
+        this.carId = new SimpleIntegerProperty(0);
+        this.make = new SimpleStringProperty("");
+        this.model = new SimpleStringProperty("");
+        this.year = new SimpleIntegerProperty(0);
+        this.price = new SimpleDoubleProperty(0.0);
+        this.stock = new SimpleIntegerProperty(0);
+        this.vin = new SimpleStringProperty("");
+    }
+
+    public IntegerProperty carIdProperty() {
+        return carId;
+    }
+
+    public StringProperty makeProperty() {
+        return make;
+    }
+
+    public StringProperty modelProperty() {
+        return model;
+    }
+
+    public IntegerProperty yearProperty() {
+        return year;
+    }
+
+    public DoubleProperty priceProperty() {
+        return price;
+    }
+
+    public IntegerProperty stockProperty() {
+        return stock;
+    }
+
+    public StringProperty vinProperty() {
+        return vin;
+    }
+
+    public int getcarId() {
+        return carId.get();
+    }
+
+    public String getMake() {
+        return make.get();
+    }
+
+    public String getModel() {
+        return model.get();
+    }
+
+    public int getYear() {
+        return year.get();
+    }
+
+    public double getPrice() {
+        return price.get();
+    }
+
+    public int getStock() {
+        return stock.get();
+    }
+
+    public String getVin() {
+        return vin.get();
+    }
+
+    public void setCarId(int carId) {
+        this.carId.set(carId);
+    }
+
+    public void setMake(String make) {
+        this.make.set(make);
+    }
+
+    public void setModel(String model) {
+        this.model.set(model);
+    }
+
+    public void setYear(int year) {
+        this.year.set(year);
+    }
+
+    public void setPrice(double price) {
+        this.price.set(price);
+    }
+
+    public void setStock(int stock) {
+        this.stock.set(stock);
+    }
+
+    public void setVin(String vin) {
+        this.vin.set(vin);
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\main\Main.java
+```
+package main;
+import ui.homepage;
+import ui.Loginpage;
+import utils.DatabaseConnection;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+
+import javafx.application.Application;
+
+public class Main {
+    public static void main(String[] args) {
+        Application.launch(homepage.class, args);
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\database_access\CarAdd.java
+```
+package database_access;
+
+import models.Car;
+import utils.DatabaseConnection;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class CarAdd {
+
+    // Method to fetch all cars from the database
+    public List<Car> getAllCars() {
+        List<Car> cars = new ArrayList<>();
+        String query = "SELECT * FROM cars"; // Ensure table name matches your schema
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                Car car = new Car();
+                car.setCarId(rs.getInt("CarID"));
+                car.setMake(rs.getString("Make"));
+                car.setModel(rs.getString("Model"));
+                car.setYear(rs.getInt("Year"));
+                car.setPrice(rs.getDouble("Price"));
+                car.setStock(rs.getInt("Stock"));
+                car.setVin(rs.getString("VIN"));
+                cars.add(car);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching cars: " + e.getMessage());
+        }
+        return cars;
+    }
+
+    // Method to add a new car to the database
+    public void addCar(Car car) {
+        String query = "INSERT INTO cars (Make, Model, Year, Price, Stock, VIN) VALUES (?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, car.getMake());
+            stmt.setString(2, car.getModel());
+            stmt.setInt(3, car.getYear());
+            stmt.setDouble(4, car.getPrice());
+            stmt.setInt(5, car.getStock());
+            stmt.setString(6, car.getVin());
+            stmt.executeUpdate();
+
+        } catch (SQLException e) {
+            System.err.println("Error adding car: " + e.getMessage());
+        }
+    }
+
+    // Method to search for cars by make or model
+    public List<Car> searchCars(String searchTerm) {
+        List<Car> cars = new ArrayList<>();
+        String query = "SELECT * FROM cars WHERE Make LIKE ? OR Model LIKE ?";
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            String likeSearchTerm = "%" + searchTerm + "%";
+            stmt.setString(1, likeSearchTerm);
+            stmt.setString(2, likeSearchTerm);
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                Car car = new Car();
+                car.setCarId(rs.getInt("CarID"));
+                car.setMake(rs.getString("Make"));
+                car.setModel(rs.getString("Model"));
+                car.setYear(rs.getInt("Year"));
+                car.setPrice(rs.getDouble("Price"));
+                car.setStock(rs.getInt("Stock"));
+                car.setVin(rs.getString("VIN"));
+                cars.add(car);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error searching cars: " + e.getMessage());
+        }
+        return cars;
+    }
+}
+
+```
+File: C:\Users\arjaa\OneDrive\Desktop\Hajjaj\demo\src\main\java\com\example\App.java
+```
+package com.example;
+
+import javafx.application.Application;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.stage.Stage;
+
+import java.io.IOException;
+
+/**
+ * JavaFX App
+ */
+public class App extends Application {
+
+    private static Scene scene;
+
+    @Override
+    public void start(Stage stage) throws IOException {
+        scene = new Scene(loadFXML("primary"), 640, 480);
+        stage.setScene(scene);
+        stage.show();
+    }
+
+    static void setRoot(String fxml) throws IOException {
+        scene.setRoot(loadFXML(fxml));
+    }
+
+    private static Parent loadFXML(String fxml) throws IOException {
+        FXMLLoader fxmlLoader = new FXMLLoader(App.class.getResource(fxml + ".fxml"));
+        return fxmlLoader.load();
+    }
+
+    public static void main(String[] args) {
+        launch();
+    }
+
+}
+```

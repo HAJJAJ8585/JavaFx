@@ -1,0 +1,35 @@
+/* VBox Styles */
+.vbox {
+    -fx-background-color: rgba(0, 0, 0, 0.8); /* Background color with transparency */
+    -fx-padding: 10px; /* Padding around the VBox */
+    -fx-border-color: white; /* Border color */
+    -fx-border-width: 1px; /* Border width */
+}
+
+/* VBox Header */
+.vbox-header {
+    -fx-background-color: rgba(0, 0, 0, 0.6); /* Header background color with transparency */
+    -fx-text-fill: white; /* Text color */
+    -fx-font-weight: bold; /* Bold text */
+    -fx-padding: 10px; /* Padding around the header */
+    -fx-font-size: 16px; /* Font size */
+}
+
+/* VBox Content */
+.vbox-content {
+    -fx-background-color: rgba(0, 0, 0, 0.1); /* Content background color with transparency */
+    -fx-text-fill: white; /* Text color */
+    -fx-font-size: 14px; /* Font size */
+    -fx-padding: 10px; /* Padding around content */
+}
+
+/* Hover Effect on VBox */
+.vbox:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.2); /* Light hover effect */
+}
+
+/* Focused VBox */
+.vbox:focused {
+    -fx-border-color: rgba(0, 0, 255, 0.6); /* Blue border when focused */
+    -fx-text-fill: black; /* Text color when focused */
+}

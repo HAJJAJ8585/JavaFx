@@ -1,0 +1,44 @@
+/* TableView Styles */
+.table-view {
+    -fx-background-color: rgba(0, 0, 0, 0.8);
+    -fx-text-fill: white;
+    -fx-border-color: white;
+    -fx-border-width: 1;
+}
+
+/* Column Header Styles */
+.table-view .column-header {
+    -fx-background-color: rgba(0, 0, 0, 0.6);
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 10px;
+}
+
+.table-view .column-header .label {
+    -fx-font-size: 16px;
+    -fx-text-fill: white;
+}
+
+/* TableRow Styles */
+.table-view .table-row {
+    -fx-background-color: rgba(0, 0, 0, 0.1);
+    -fx-border-color: white;
+    -fx-text-fill: white;
+}
+
+.table-view .table-row:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* TableCell Styles */
+.table-view .table-cell {
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-alignment: CENTER;
+}
+
+/* Focused Cell */
+.table-view .table-cell:focused {
+    -fx-background-color: rgba(0, 0, 255, 0.6);
+    -fx-text-fill: black;
+}

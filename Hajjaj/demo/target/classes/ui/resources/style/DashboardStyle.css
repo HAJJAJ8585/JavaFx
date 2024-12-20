@@ -1,0 +1,89 @@
+/* Root style */
+.root {
+    -fx-font-family: "Arial";
+}
+
+/* Button style */
+.button {
+    -fx-font-size: 14px;
+    -fx-padding: 10;
+    -fx-background-color: black;
+    -fx-text-fill: white;
+    -fx-border-radius: 5;
+    -fx-background-radius: 5;
+
+}
+
+/* Button hover effect */
+.button:hover {
+    -fx-background-color: #10165F;
+    -fx-text-fill: white;
+}
+
+/* Button pressed effect */
+.button:pressed {
+    -fx-background-color: #1620A1;
+    -fx-text-fill: white;
+}
+
+/* Header style */
+.header {
+    -fx-background-color: rgba(0, 0, 0, 0.5);  /* Semi-transparent background */
+}
+
+/* Search Bar style */
+.text-field {
+    -fx-font-size: 15px;
+    -fx-padding: 5;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-border-color: white;
+    -fx-background-color: rgba(0, 0, 0, 0.8);
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: gray;
+}
+
+/* TableView Styles */
+.table-view {
+    -fx-background-color: rgba(0, 0, 0, 0.8);
+    -fx-text-fill: white;
+    -fx-border-color: white;
+    -fx-border-width: 1;
+}
+
+/* Column Header Styles */
+.table-view .column-header {
+    -fx-background-color: rgba(0, 0, 0, 0.6);
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 10px;
+}
+
+.table-view .column-header .label {
+    -fx-font-size: 16px;
+    -fx-text-fill: white;
+}
+
+/* TableRow Styles */
+.table-view .table-row {
+    -fx-background-color: rgba(0, 0, 0, 0.1);
+    -fx-border-color: white;
+    -fx-text-fill: white;
+}
+
+.table-view .table-row:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* TableCell Styles */
+.table-view .table-cell {
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-alignment: CENTER;
+}
+
+/* Focused Cell */
+.table-view .table-cell:focused {
+    -fx-background-color: rgba(0, 0, 255, 0.6);
+    -fx-text-fill: black;
+}
